@@ -1,0 +1,13 @@
+appId: com.local.taskkanban
+productName: 简易任务看板
+directories:
+  output: dist
+files:
+  - src/**
+  - assets/**
+win:
+  target:
+    - portable
+  icon: assets/icon.png
+portable:
+  artifactName: "简易任务看板-${version}.exe"
