@@ -5,7 +5,7 @@
   "description": "简易任务看板（桌面版）",
   "main": "src/main/main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "node start.js",
     "test": "node --test",
     "build": "electron-builder --win portable"
   },
