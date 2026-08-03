@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data: taskimage: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>简易任务看板</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header id="toolbar">
+    <h1>简易任务看板</h1>
+    <nav id="filters">
+      <button class="filter active" data-filter="all">全部</button>
+      <button class="filter" data-filter="pending">待执行</button>
+      <button class="filter" data-filter="done">已执行</button>
+    </nav>
+  </header>
+
+  <main id="layout">
+    <section id="list">
+      <div id="cards"></div>
+    </section>
+
+    <section id="createPanel">
+      <h2>创建任务</h2>
+      <textarea id="newText" rows="8" placeholder="输入任务描述或备注…"></textarea>
+      <div id="newThumbs" class="thumbs"></div>
+      <div id="createActions">
+        <button id="addImageBtn">添加图片</button>
+        <button id="createBtn" class="primary">创建任务</button>
+      </div>
+      <p class="hint">支持 Ctrl+V 粘贴图片（jpg/png/bmp，≤10MB，最多5张）</p>
+    </section>
+  </main>
+
+  <div id="detailOverlay" class="overlay hidden">
+    <div id="detailModal" class="modal">
+      <div id="detailBody"></div>
+      <div id="detailActions"></div>
+    </div>
+  </div>
+
+  <div id="lightboxOverlay" class="overlay hidden">
+    <img id="lightboxImg" />
+  </div>
+
+  <script src="api.js"></script>
+  <script src="ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
