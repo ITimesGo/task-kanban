@@ -9,5 +9,6 @@ win:
   target:
     - portable
   icon: assets/icon.png
+  signAndEditExecutable: false
 portable:
   artifactName: "简易任务看板-${version}.exe"
