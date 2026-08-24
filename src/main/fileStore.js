@@ -219,6 +219,141 @@ class FileStore {
     });
     return { ...task, images: imgs, attachments };
   }
+
+  #rmEmptyDirs(kind) {
+    const root = path.join(this.appDataDir, kind);
+    if (!fs.existsSync(root)) return;
+    let entries;
+    try { entries = fs.readdirSync(root); } catch (_) { return; }
+    for (const name of entries) {
+      const abs = path.join(root, name);
+      let st;
+      try { st = fs.statSync(abs); } catch (_) { continue; }
+      if (!st.isDirectory()) continue;
+      try {
+        if (fs.readdirSync(abs).length === 0) fs.rmdirSync(abs);
+      } catch (_) {}
+    }
+  }
+
+  rmEmptyMediaDirs() {
+    this.#rmEmptyDirs('images');
+    this.#rmEmptyDirs('attachments');
+  }
+
+  migrateMediaLayout() {
+    const tagList = this.loadTags();
+    let moved = 0;
+    const errors = [];
+    const mapList = (list) => list.map((t) => {
+      const next = this.moveMediaForTask(t, tagList);
+      if (JSON.stringify(next.images) !== JSON.stringify(t.images)
+        || JSON.stringify(next.attachments) !== JSON.stringify(t.attachments)) moved++;
+      return next;
+    });
+    this.saveTasks(mapList(this.loadTasks()));
+    this.saveTrash(mapList(this.loadTrash()));
+    this.rmEmptyMediaDirs();
+    return { moved, errors };
+  }
+
+  /**
+   * Rename/merge tag media folders and rewrite tasks/trash rels.
+   * On disk failure: undo then throw without changing JSON.
+   */
+  renameTagFolders(tagId, tagsBefore, tagsAfter) {
+    const oldSub = mediaLayout.subdirFor([tagId], tagsBefore);
+    const newSub = mediaLayout.subdirFor([tagId], tagsAfter);
+    if (oldSub === newSub) return;
+
+    const undos = [];
+    /** @type {Map<string, string>} oldRel -> newRel */
+    const relMap = new Map();
+
+    const applyKind = (kind) => {
+      const oldAbs = path.join(this.appDataDir, kind, oldSub);
+      const newAbs = path.join(this.appDataDir, kind, newSub);
+      if (!fs.existsSync(oldAbs)) return;
+
+      if (!fs.existsSync(newAbs)) {
+        fs.renameSync(oldAbs, newAbs);
+        undos.push(() => {
+          if (fs.existsSync(newAbs) && !fs.existsSync(oldAbs)) fs.renameSync(newAbs, oldAbs);
+        });
+        // whole-dir rename: map every file under newAbs
+        for (const name of fs.readdirSync(newAbs)) {
+          const abs = path.join(newAbs, name);
+          if (!fs.statSync(abs).isFile()) continue;
+          const oldRel = mediaLayout.relFor(kind, oldSub, name);
+          const newRel = mediaLayout.relFor(kind, newSub, name);
+          relMap.set(oldRel, newRel);
+        }
+        return;
+      }
+
+      // merge
+      for (const name of fs.readdirSync(oldAbs)) {
+        const from = path.join(oldAbs, name);
+        if (!fs.statSync(from).isFile()) continue;
+        const absTo = this.safeMove(from, newAbs, name);
+        const finalName = path.basename(absTo);
+        const oldRel = mediaLayout.relFor(kind, oldSub, name);
+        const newRel = mediaLayout.relFor(kind, newSub, finalName);
+        relMap.set(oldRel, newRel);
+        undos.push(() => {
+          if (!fs.existsSync(absTo)) return;
+          fs.mkdirSync(oldAbs, { recursive: true });
+          const backName = mediaLayout.allocConflictName(oldAbs, name, (p) => fs.existsSync(p));
+          const backAbs = path.join(oldAbs, backName);
+          try { fs.renameSync(absTo, backAbs); }
+          catch (_) { fs.copyFileSync(absTo, backAbs); fs.unlinkSync(absTo); }
+        });
+      }
+      try {
+        if (fs.existsSync(oldAbs) && fs.readdirSync(oldAbs).length === 0) fs.rmdirSync(oldAbs);
+      } catch (_) {}
+    };
+
+    try {
+      applyKind('images');
+      applyKind('attachments');
+    } catch (err) {
+      for (let i = undos.length - 1; i >= 0; i--) {
+        try { undos[i](); } catch (_) {}
+      }
+      throw err;
+    }
+
+    const rewriteRel = (rel) => {
+      if (!rel || typeof rel !== 'string') return rel;
+      const norm = rel.replace(/\\/g, '/');
+      if (relMap.has(norm)) return relMap.get(norm);
+      const prefixImg = `images/${oldSub}/`;
+      const prefixAtt = `attachments/${oldSub}/`;
+      if (norm.startsWith(prefixImg)) {
+        return mediaLayout.relFor('images', newSub, path.basename(norm));
+      }
+      if (norm.startsWith(prefixAtt)) {
+        return mediaLayout.relFor('attachments', newSub, path.basename(norm));
+      }
+      return rel;
+    };
+
+    const rewriteTask = (t) => {
+      const images = (t.images || []).map(rewriteRel);
+      const attachments = (t.attachments || []).map((a) => {
+        if (typeof a === 'string') return rewriteRel(a);
+        if (!a || !a.rel) return a;
+        const newRel = rewriteRel(a.rel);
+        return { ...a, rel: newRel, name: path.basename(newRel) };
+      });
+      return { ...t, images, attachments };
+    };
+
+    this.saveTasks(this.loadTasks().map(rewriteTask));
+    this.saveTrash(this.loadTrash().map(rewriteTask));
+    this.rmEmptyMediaDirs();
+  }
 }
 
 module.exports = FileStore;
