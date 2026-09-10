@@ -1862,6 +1862,7 @@ body {
 .range-option.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
 
 #settingsBtn {
+  position: relative;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-muted);
@@ -1877,6 +1878,28 @@ body {
   transition: all var(--transition);
 }
 #settingsBtn:hover { color: var(--primary); border-color: var(--primary); }
+
+.update-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff3b30;
+  box-shadow: 0 0 0 1.5px var(--surface, #fff);
+  pointer-events: none;
+}
+.update-dot.update-dot--nav {
+  position: relative;
+  top: auto;
+  right: auto;
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: middle;
+  box-shadow: 0 0 0 1.5px var(--surface, #fff);
+}
+.update-dot.hidden { display: none; }
 
 /* 设置弹窗 */
 .settings-modal {

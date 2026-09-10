@@ -419,6 +419,76 @@ document.querySelectorAll('.settings-nav-item').forEach((item) => {
 });
 
 let pendingUpdateUrl = '';
+const UPDATE_BADGE_KEY = 'kanban-update-available';
+
+function setUpdateBadge(on, latest) {
+  const dots = [
+    document.getElementById('settingsUpdateDot'),
+    document.getElementById('aboutUpdateDot'),
+  ];
+  dots.forEach((el) => {
+    if (!el) return;
+    el.classList.toggle('hidden', !on);
+    el.hidden = !on;
+  });
+  const btn = document.getElementById('settingsBtn');
+  if (btn) {
+    btn.title = on
+      ? `设置（有新版本${latest ? ` ${latest}` : ''}）`
+      : '设置';
+    btn.setAttribute('aria-label', btn.title);
+  }
+  try {
+    if (on && latest) localStorage.setItem(UPDATE_BADGE_KEY, String(latest));
+    else if (!on) localStorage.removeItem(UPDATE_BADGE_KEY);
+  } catch (_) { /* ignore */ }
+}
+
+function restoreUpdateBadgeFromCache() {
+  try {
+    const v = localStorage.getItem(UPDATE_BADGE_KEY);
+    if (v) setUpdateBadge(true, v);
+  } catch (_) { /* ignore */ }
+}
+
+function applyUpdateCheckResult(res, { silent = false } = {}) {
+  const hint = document.getElementById('aboutUpdateHint');
+  const openBtn = document.getElementById('openUpdateUrlBtn');
+  pendingUpdateUrl = '';
+  if (openBtn) {
+    openBtn.classList.add('hidden');
+    openBtn.hidden = true;
+  }
+  if (!res || !res.ok) {
+    if (!silent && hint) hint.textContent = (res && res.error) || '检查失败';
+    return false;
+  }
+  if (res.status === 'available') {
+    const notes = res.notes ? `：${res.notes}` : '';
+    if (hint) hint.textContent = `发现新版本 ${res.latest}（当前 ${res.current}）${notes}`;
+    pendingUpdateUrl = res.url || '';
+    if (openBtn && pendingUpdateUrl) {
+      openBtn.classList.remove('hidden');
+      openBtn.hidden = false;
+    }
+    setUpdateBadge(true, res.latest);
+    return true;
+  }
+  setUpdateBadge(false);
+  if (!silent && hint) {
+    hint.textContent = `已是最新版本（${res.current || res.latest || ''}）`;
+  }
+  return false;
+}
+
+/** 启动/后台静默检查；有新版则点亮小红点 */
+async function silentCheckUpdate() {
+  try {
+    const res = await API.checkForUpdate();
+    applyUpdateCheckResult(res, { silent: true });
+  } catch (_) { /* ignore */ }
+}
+window.silentCheckUpdate = silentCheckUpdate;
 
 async function fillAboutPanel() {
   const verEl = document.getElementById('aboutVersionText');
@@ -435,39 +505,28 @@ async function fillAboutPanel() {
   } catch (_) {
     if (verEl) verEl.textContent = '版本 —';
   }
-  if (hint) {
-    hint.textContent = '点击检查是否有新版本。更新信息来自 GitHub 仓库中的 docs/kanban-latest.json。';
+  if (hint) hint.textContent = '正在检查更新…';
+  try {
+    const res = await API.checkForUpdate();
+    applyUpdateCheckResult(res, { silent: false });
+    if (res && res.ok && res.status === 'latest' && hint) {
+      hint.textContent = `已是最新版本（${res.current || ''}）。也可稍后再点「检查更新」。`;
+    } else if ((!res || !res.ok) && hint) {
+      hint.textContent = ((res && res.error) || '自动检查失败') + '。可稍后点「检查更新」重试。';
+    }
+  } catch (err) {
+    if (hint) hint.textContent = ((err && err.message) || '自动检查失败') + '。可稍后点「检查更新」重试。';
   }
 }
 
 document.getElementById('checkUpdateBtn')?.addEventListener('click', async () => {
   const btn = document.getElementById('checkUpdateBtn');
   const hint = document.getElementById('aboutUpdateHint');
-  const openBtn = document.getElementById('openUpdateUrlBtn');
   if (btn) btn.disabled = true;
-  pendingUpdateUrl = '';
-  if (openBtn) {
-    openBtn.classList.add('hidden');
-    openBtn.hidden = true;
-  }
   if (hint) hint.textContent = '正在检查…';
   try {
     const res = await API.checkForUpdate();
-    if (!res || !res.ok) {
-      if (hint) hint.textContent = (res && res.error) || '检查失败';
-      return;
-    }
-    if (res.status === 'available') {
-      const notes = res.notes ? `：${res.notes}` : '';
-      if (hint) hint.textContent = `发现新版本 ${res.latest}（当前 ${res.current}）${notes}`;
-      pendingUpdateUrl = res.url || '';
-      if (openBtn && pendingUpdateUrl) {
-        openBtn.classList.remove('hidden');
-        openBtn.hidden = false;
-      }
-    } else {
-      if (hint) hint.textContent = `已是最新版本（${res.current || res.latest || ''}）`;
-    }
+    applyUpdateCheckResult(res, { silent: false });
   } catch (err) {
     if (hint) hint.textContent = (err && err.message) || '检查失败';
   } finally {
@@ -482,6 +541,8 @@ document.getElementById('openUpdateUrlBtn')?.addEventListener('click', async () 
     alert(res.error || '无法打开下载页');
   }
 });
+
+restoreUpdateBadgeFromCache();
 
 function pluginStatusLabel(p) {
   if (p.kind === 'download' && !p.installed) return '未安装';

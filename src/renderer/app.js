@@ -6,3 +6,6 @@ if (typeof applySavedViewDefaults === 'function') {
 }
 loadTags();
 refresh();
+if (typeof window.silentCheckUpdate === 'function') {
+  setTimeout(() => { window.silentCheckUpdate(); }, 1500);
+}
