@@ -27,7 +27,7 @@ jobs:
         id: meta
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           PKG="$(node -p "require('./package.json').version")"
 
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
@@ -44,11 +44,12 @@ jobs:
             exit 0
           fi
 
-          # main 分支：仅当 version 相对上一提交有变化时发版
+          # main：仅当 version 相对上一提交有变化时发版
           NEW="$PKG"
           OLD=""
           if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-            OLD="$(git show HEAD~1:package.json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{console.log(JSON.parse(s).version)}catch{console.log('')}}")"
+            git show HEAD~1:package.json > /tmp/pkg-prev.json
+            OLD="$(node -p "require('/tmp/pkg-prev.json').version")"
           fi
           echo "触发方式=main  old=${OLD:-none}  new=$NEW"
 
