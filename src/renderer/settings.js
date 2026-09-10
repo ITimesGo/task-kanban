@@ -436,7 +436,7 @@ async function fillAboutPanel() {
     if (verEl) verEl.textContent = '版本 —';
   }
   if (hint) {
-    hint.textContent = '点击检查是否有新版本。当前更新源为占位地址，发版前请在源码中改成真实 JSON 地址。';
+    hint.textContent = '点击检查是否有新版本。更新信息来自 GitHub 仓库中的 docs/kanban-latest.json。';
   }
 }
 

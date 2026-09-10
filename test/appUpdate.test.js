@@ -42,6 +42,9 @@ test('evaluateUpdate 缺 version/url 时报 invalid', () => {
   assert.equal(evaluateUpdate('1.0.0', null).status, 'invalid');
 });
 
-test('UPDATE_FEED_URL 为占位地址', () => {
-  assert.match(UPDATE_FEED_URL, /^https:\/\/example\.com\//);
+test('UPDATE_FEED_URL 指向仓库 kanban-latest.json', () => {
+  assert.match(
+    UPDATE_FEED_URL,
+    /^https:\/\/raw\.githubusercontent\.com\/ITimesGo\/task-kanban\/main\/docs\/kanban-latest\.json$/
+  );
 });

@@ -11,10 +11,11 @@
 
 - 设置新增「关于」面板：显示当前版本、`检查更新` 按钮、结果文案。
 - 启动不自动检查。
-- 请求占位地址 `https://example.com/kanban-latest.json`（发版前改为真实地址并重新打包）。
+- 请求仓库 feed：`https://raw.githubusercontent.com/ITimesGo/task-kanban/main/docs/kanban-latest.json`
 - Feed JSON：`{ "version": "x.y.z", "notes"?: string, "url": "https://..." }`
 - 比较 semver（major.minor.patch，忽略前缀 `v`）；远程更高 → 提示更新并提供打开下载页；否则「已是最新」。
 - 网络/JSON 错误 → 友好错误提示，不崩溃。
+- 发版时更新 `docs/kanban-latest.json` 并推送到 `main`；下载 `url` 建议用 GitHub Release 资源直链。
 
 ## 实现要点
 

@@ -1,7 +1,8 @@
 /** 应用检查更新：版本比较与 feed 判定（纯逻辑，便于单测） */
 
-/** 发版前改成真实地址，例如 OSS / GitHub raw */
-const UPDATE_FEED_URL = 'https://example.com/kanban-latest.json';
+/** 发版时更新仓库中的 docs/kanban-latest.json（version / notes / url） */
+const UPDATE_FEED_URL =
+  'https://raw.githubusercontent.com/ITimesGo/task-kanban/main/docs/kanban-latest.json';
 
 function parseVersion(raw) {
   const s = String(raw == null ? '' : raw).trim().replace(/^v/i, '');
