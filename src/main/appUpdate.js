@@ -56,9 +56,39 @@ function evaluateUpdate(localVersion, feed) {
   return { status: 'latest', current, latest };
 }
 
+/** PowerShell 单引号字面量（路径含空格/中文） */
+function psSingleQuote(s) {
+  return `'${String(s).replace(/'/g, "''")}'`;
+}
+
+/**
+ * 生成「等旧进程退出 → 覆盖 exe → 启动新程序 → 删临时文件」的 PowerShell 脚本。
+ * 注意：勿用 $PID（PowerShell 保留变量）。
+ */
+function buildApplyUpdateScript({ pid, sourcePath, targetPath }) {
+  const pidNum = Number(pid);
+  if (!Number.isFinite(pidNum) || pidNum <= 0) {
+    throw new Error('invalid pid');
+  }
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    `$pidToWait = ${pidNum}`,
+    `$src = ${psSingleQuote(sourcePath)}`,
+    `$dst = ${psSingleQuote(targetPath)}`,
+    'while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }',
+    'Start-Sleep -Milliseconds 400',
+    'Copy-Item -LiteralPath $src -Destination $dst -Force',
+    'Remove-Item -LiteralPath $src -Force -ErrorAction SilentlyContinue',
+    'Start-Process -FilePath $dst',
+    'Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue',
+  ].join('\r\n');
+}
+
 module.exports = {
   UPDATE_FEED_URL,
   parseVersion,
   compareVersions,
   evaluateUpdate,
+  psSingleQuote,
+  buildApplyUpdateScript,
 };

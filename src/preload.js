@@ -63,7 +63,13 @@ contextBridge.exposeInMainWorld('taskAPI', {
   exportTasks: (options) => ipcRenderer.invoke('export:tasks', options),
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
   checkForUpdate: () => ipcRenderer.invoke('update:check'),
+  downloadUpdate: (url) => ipcRenderer.invoke('update:download', url),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  onUpdateDownloadProgress: (cb) => {
+    const handler = (_e, d) => cb(d);
+    ipcRenderer.on('update:downloadProgress', handler);
+    return () => { ipcRenderer.removeListener('update:downloadProgress', handler); };
+  },
   // 离线 OCR
   ocrStatus: () => ipcRenderer.invoke('ocr:status'),
   ocrRecognize: (dataUrl) => ipcRenderer.invoke('ocr:recognize', dataUrl),

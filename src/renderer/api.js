@@ -7,9 +7,10 @@ for (const k of ['getAllTasks','createTask','toggleStatus','updateTask','deleteT
   'pickAttachments','openAttachment','pathForFile',
   'listTrash','restoreTrash','purgeTrash','emptyTrash',
   'exportBackup','importBackup','exportTasks',
-  'getAppVersion','checkForUpdate','openExternal']) {
+  'getAppVersion','checkForUpdate','downloadUpdate','openExternal']) {
   window.API[k] = (...a) => window.taskAPI[k](...a);
 }
+window.API.onUpdateDownloadProgress = (cb) => window.taskAPI.onUpdateDownloadProgress(cb);
 window.API.onStorageChanged = (cb) => window.taskAPI.onStorageChanged(cb);
 window.API.onAttachmentProgress = (cb) => window.taskAPI.onAttachmentProgress(cb);
 window.API.onClosePopups = (cb) => window.taskAPI.onClosePopups(cb);

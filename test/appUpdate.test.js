@@ -5,6 +5,8 @@ const {
   parseVersion,
   evaluateUpdate,
   UPDATE_FEED_URL,
+  psSingleQuote,
+  buildApplyUpdateScript,
 } = require('../src/main/appUpdate');
 
 test('parseVersion 支持 v 前缀与缺段', () => {
@@ -47,4 +49,21 @@ test('UPDATE_FEED_URL 指向仓库 kanban-latest.json', () => {
     UPDATE_FEED_URL,
     /^https:\/\/raw\.githubusercontent\.com\/ITimesGo\/task-kanban\/main\/docs\/kanban-latest\.json$/
   );
+});
+
+test('psSingleQuote 转义单引号', () => {
+  assert.equal(psSingleQuote(`C:\\a'b.exe`), `'C:\\a''b.exe'`);
+});
+
+test('buildApplyUpdateScript 等待 PID 并覆盖目标', () => {
+  const s = buildApplyUpdateScript({
+    pid: 12345,
+    sourcePath: 'C:\\Temp\\new.exe',
+    targetPath: 'D:\\Apps\\任务看板.exe',
+  });
+  assert.match(s, /\$pidToWait = 12345/);
+  assert.match(s, /Copy-Item/);
+  assert.match(s, /Start-Process/);
+  assert.doesNotMatch(s, /\$PID\s*=/);
+  assert.throws(() => buildApplyUpdateScript({ pid: 0, sourcePath: 'a', targetPath: 'b' }));
 });
