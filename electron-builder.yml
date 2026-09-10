@@ -16,4 +16,5 @@ win:
   signAndEditExecutable: false
 afterPack: ./after-pack.js
 portable:
-  artifactName: "任务看板-${version}.exe"
+  # 用 ASCII 文件名：GitHub Release 上传中文名常被剥成「-1.0.x.exe」，导致检查更新 404
+  artifactName: "task-kanban-${version}.exe"

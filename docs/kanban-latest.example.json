@@ -1,5 +1,5 @@
 {
   "version": "1.0.1",
-  "notes": "示例：发版时改 docs/kanban-latest.json 的 version、notes、url，并提交推送到 main。",
-  "url": "https://github.com/ITimesGo/task-kanban/releases/download/v1.0.1/任务看板-1.0.1.exe"
+  "notes": "示例：修复若干问题",
+  "url": "https://github.com/ITimesGo/task-kanban/releases/download/v1.0.1/task-kanban-1.0.1.exe"
 }
