@@ -1,0 +1,175 @@
+/** 界面皮肤：白天 / 苹果 / 马里奥 / 黑夜 / 护眼 */
+
+/** 设置页皮肤卡片展示顺序 */
+const SKIN_ORDER = ['day', 'apple', 'mario', 'night', 'eyecare'];
+
+/** 所有皮肤可能写入的 CSS 变量（换肤前先清掉，避免特殊阴影等残留） */
+const SKIN_VAR_KEYS = [
+  '--bg', '--surface', '--surface-2', '--surface-muted',
+  '--text', '--text-muted', '--border', '--border-strong',
+  '--danger', '--accent', '--on-primary',
+  '--primary', '--primary-hover', '--primary-active', '--primary-soft', '--ring', '--rgb',
+  '--radius', '--radius-sm', '--shadow-sm', '--shadow-md', '--transition',
+  '--mario-blue', '--mario-gold', '--mario-brown', '--mario-brick', '--pixel',
+  '--genshin-gold', '--genshin-gold-soft', '--genshin-navy', '--genshin-ink',
+];
+
+const DEFAULT_SHADOW_SM = '0 1px 3px rgba(var(--rgb), 0.12)';
+const DEFAULT_SHADOW_MD = '0 10px 30px rgba(var(--rgb), 0.16)';
+
+const SKINS = {
+  day: {
+    label: '白天',
+    desc: '清爽浅色',
+    customPrimary: true,
+    contrastAgainst: '#ffffff',
+    themeMix: { softMix: '#ffffff', hoverMix: '#ffffff', activeMix: '#000000' },
+    titlebar: { color: '#ffffff', symbolColor: '#303133' },
+    vars: {
+      '--bg': '#f5f7fa',
+      '--surface': '#ffffff',
+      '--surface-2': '#eef3f8',
+      '--surface-muted': '#fafbfc',
+      '--text': '#303133',
+      '--text-muted': '#606266',
+      '--border': '#e4e7ed',
+      '--border-strong': '#dcdfe6',
+      '--danger': '#f56c6c',
+      '--accent': '#ea580c',
+      '--on-primary': '#ffffff',
+      '--radius': '12px',
+      '--radius-sm': '8px',
+      '--shadow-sm': DEFAULT_SHADOW_SM,
+      '--shadow-md': DEFAULT_SHADOW_MD,
+    },
+  },
+  night: {
+    label: '黑夜',
+    desc: '深色专注',
+    customPrimary: false,
+    fixedPrimary: '#409eff',
+    contrastAgainst: '#121826',
+    themeMix: { softMix: '#1a2332', hoverMix: '#ffffff', activeMix: '#000000' },
+    titlebar: { color: '#151b28', symbolColor: '#e8eef7' },
+    vars: {
+      '--bg': '#0f1419',
+      '--surface': '#151b28',
+      '--surface-2': '#1e2738',
+      '--surface-muted': '#1a2230',
+      '--text': '#e8eef7',
+      '--text-muted': '#9aa8bc',
+      '--border': '#2a3548',
+      '--border-strong': '#3a4660',
+      '--danger': '#f87171',
+      '--accent': '#fb923c',
+      '--on-primary': '#ffffff',
+      '--radius': '12px',
+      '--radius-sm': '8px',
+      '--shadow-sm': '0 1px 3px rgba(0,0,0,0.45)',
+      '--shadow-md': '0 12px 32px rgba(0,0,0,0.55)',
+    },
+  },
+  mario: {
+    label: '马里奥',
+    desc: '像素马赛克游戏风',
+    customPrimary: false,
+    fixedPrimary: '#e52521',
+    contrastAgainst: '#fff1c2',
+    themeMix: { softMix: '#ffe8a3', hoverMix: '#ffffff', activeMix: '#000000' },
+    titlebar: { color: '#049cd8', symbolColor: '#ffffff' },
+    vars: {
+      '--bg': '#fff4d6',
+      '--surface': '#fff8e8',
+      '--surface-2': '#ffd86b',
+      '--surface-muted': '#ffe9a8',
+      '--text': '#1a1a1a',
+      '--text-muted': '#5a4632',
+      '--border': '#6b3e26',
+      '--border-strong': '#3d2416',
+      '--danger': '#e52521',
+      '--accent': '#fbd000',
+      '--on-primary': '#ffffff',
+      '--primary': '#e52521',
+      '--primary-hover': '#ff4d47',
+      '--primary-active': '#b81c18',
+      '--primary-soft': '#ffd0cc',
+      '--ring': '#e52521',
+      '--rgb': '229,37,33',
+      '--radius': '0px',
+      '--radius-sm': '0px',
+      '--shadow-sm': '2px 2px 0 #6b3e26',
+      '--shadow-md': '4px 4px 0 #3d2416',
+      '--mario-blue': '#049cd8',
+      '--mario-gold': '#fbd000',
+      '--mario-brown': '#6b3e26',
+      '--mario-brick': '#c84c0c',
+    },
+  },
+  eyecare: {
+    label: '护眼',
+    desc: '低蓝光豆沙绿',
+    customPrimary: false,
+    fixedPrimary: '#3a8f5c',
+    contrastAgainst: '#c7edcc',
+    themeMix: { softMix: '#d9f0dc', hoverMix: '#ffffff', activeMix: '#000000' },
+    titlebar: { color: '#d5ead8', symbolColor: '#2f4a34' },
+    vars: {
+      '--bg': '#c7edcc',
+      '--surface': '#ddf3e0',
+      '--surface-2': '#cfe8d3',
+      '--surface-muted': '#e7f6e9',
+      '--text': '#2a3d2e',
+      '--text-muted': '#5a7260',
+      '--border': '#b5d9bb',
+      '--border-strong': '#9cc8a4',
+      '--danger': '#d45454',
+      '--accent': '#c27803',
+      '--on-primary': '#ffffff',
+      '--radius': '12px',
+      '--radius-sm': '8px',
+      '--shadow-sm': DEFAULT_SHADOW_SM,
+      '--shadow-md': DEFAULT_SHADOW_MD,
+    },
+  },
+  apple: {
+    label: '苹果',
+    desc: '简约毛玻璃',
+    customPrimary: true,
+    // 主色多用于白底卡片/按钮；用页面浅蓝底会误杀「元素蓝」等常用色
+    contrastAgainst: '#ffffff',
+    themeMix: { softMix: '#ffffff', hoverMix: '#ffffff', activeMix: '#000000' },
+    titlebar: { color: '#f2f3f7', symbolColor: '#1d1d1f' },
+    vars: {
+      '--bg': '#e8eef8',
+      '--surface': '#ffffff',
+      '--surface-2': 'rgba(255,255,255,0.55)',
+      '--surface-muted': 'rgba(255,255,255,0.42)',
+      '--text': '#1d1d1f',
+      '--text-muted': '#636366',
+      '--border': 'rgba(255,255,255,0.55)',
+      '--border-strong': 'rgba(60,60,67,0.16)',
+      '--danger': '#ff3b30',
+      '--accent': '#ff9500',
+      '--on-primary': '#ffffff',
+      // 默认系统蓝；换肤后由主题色覆盖
+      '--primary': '#007aff',
+      '--primary-hover': '#3395ff',
+      '--primary-active': '#0062cc',
+      '--primary-soft': '#e5f1ff',
+      '--ring': '#007aff',
+      '--rgb': '0,122,255',
+      '--radius': '20px',
+      '--radius-sm': '14px',
+      '--shadow-sm': '0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06)',
+      '--shadow-md': '0 8px 32px rgba(0,0,0,0.12)',
+    },
+  },
+};
+
+function getSkin(key) {
+  return SKINS[key] || SKINS.day;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { SKINS, SKIN_ORDER, getSkin, SKIN_VAR_KEYS };
+}

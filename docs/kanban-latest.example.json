@@ -1,0 +1,5 @@
+{
+  "version": "1.0.1",
+  "notes": "示例：修复若干问题。发版时把本文件放到 UPDATE_FEED_URL 指向的地址，并改 version / url。",
+  "url": "https://example.com/releases/任务看板-1.0.1.exe"
+}

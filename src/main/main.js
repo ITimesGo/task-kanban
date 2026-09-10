@@ -10,13 +10,19 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const FileStore = require('./fileStore');
 const images = require('./images');
+const videos = require('./videos');
 const store = require('./store');
 const tags = require('./tags');
 const storage = require('./storage');
 const { cleanupOrphans } = require('./cleanupOrphans');
 const trash = require('./trash');
 const backup = require('./backup');
+const exportTasks = require('./exportTasks');
 const mediaLayout = require('./mediaLayout');
+const ocr = require('./ocr');
+const plugins = require('./plugins');
+const { normalizeMediaPayload } = require('../renderer/taskMedia');
+const { UPDATE_FEED_URL, evaluateUpdate } = require('./appUpdate');
 
 // 自定义协议：taskimage://local/images/xxx.png -> 磁盘文件
 // 注意：scheme 注册为 standard，taskimage:// 后第一段是 host，故 URL 形如 taskimage://local/<rel>
@@ -26,7 +32,17 @@ let APP_DATA = storage.resolveStoragePath(APP_DATA_ROOT); // 实际存储目录�
 let win = null;
 let fsStore = null;
 
-protocol.registerSchemesAsPrivileged([{ scheme: 'taskimage', privileges: { standard: true, secure: true } }]);
+// stream + supportFetchAPI：HTML5 <video> 需要 Range / 流式读取；secure 便于 media-src
+protocol.registerSchemesAsPrivileged([{
+  scheme: 'taskimage',
+  privileges: {
+    standard: true,
+    secure: true,
+    supportFetchAPI: true,
+    stream: true,
+    corsEnabled: true,
+  },
+}]);
 
 /** 可重复注册的 IPC（开发热重载时避免旧进程缺 handler / 重复注册失败） */
 function ipcHandle(channel, listener) {
@@ -82,7 +98,6 @@ function createWindow() {
     });
   }
   win.removeMenu(); // 去掉默认的 File/Edit/View 应用菜单栏
-  if (!app.isPackaged) win.openDevTools({ mode: 'detach' }); // 开发时自动打开调试台，方便调试样式
   // 置顶状态：启动时从配置恢复
   win.setAlwaysOnTop(global.alwaysOnTop === true);
   // 从标题栏拖拽移动窗口时，通知渲染进程收起下拉（拖拽区本身收不到 click）
@@ -93,14 +108,51 @@ function createWindow() {
   return win;
 }
 
+function ingestOrderedMedia(fsStore, items, taskId, tagOpts, { existingImages = [], existingVideos = [] } = {}) {
+  const taken = mediaLayout.imageIndexTakenSet(existingImages, taskId);
+  let nextIdx = 0;
+  const alloc = () => { while (taken.has(nextIdx)) nextIdx++; taken.add(nextIdx); return nextIdx; };
+  const takenVid = mediaLayout.imageIndexTakenSet(existingVideos, taskId);
+  let nextVid = 0;
+  const allocVid = () => { while (takenVid.has(nextVid)) nextVid++; takenVid.add(nextVid); return nextVid; };
+  const images = [];
+  const videos = [];
+  const media = [];
+  for (const item of items || []) {
+    if (item && item.kind === 'video') {
+      const v = item.value;
+      const isNew = v && typeof v === 'object' && v.srcPath;
+      const rel = isNew ? fsStore.ingestVideo(v, taskId, allocVid(), tagOpts) : v;
+      videos.push(rel);
+      media.push({ kind: 'video', rel });
+    } else {
+      const v = item && item.value;
+      const isNew = (typeof v === 'string' && v.startsWith('data:'))
+        || (v && typeof v === 'object' && v.srcPath);
+      const rel = isNew ? fsStore.ingestImage(v, taskId, alloc(), tagOpts) : v;
+      images.push(rel);
+      media.push({ kind: 'image', rel });
+    }
+  }
+  return { images, videos, media };
+}
+
 function setupStoreHandlers() {
   ipcHandle('tasks:getAll', () => fsStore.loadTasks());
-  ipcHandle('tasks:create', async (event, { text, images: imgs, attachments, tags: tagIds }) => {
+  ipcHandle('tasks:create', async (event, payload) => {
     try {
+      const { text, attachments, tags: tagIds } = payload || {};
       const tagOpts = { tags: tagIds || [] };
-      const task = store.createTask({ text, images: imgs || [], attachments: attachments || [] });
+      const mediaItems = normalizeMediaPayload(payload || {});
+      const task = store.createTask({
+        text,
+        images: mediaItems.filter((m) => m.kind !== 'video').map((m) => m.value),
+        videos: mediaItems.filter((m) => m.kind === 'video').map((m) => m.value),
+        attachments: attachments || [],
+      });
       const tasks = fsStore.loadTasks();
-      const rels = (imgs || []).map((d, i) => fsStore.ingestImage(d, task.id, i, tagOpts));
+      const ingested = ingestOrderedMedia(fsStore, mediaItems, task.id, tagOpts);
+      const rels = ingested.images;
       const atts = [];
       const attList = attachments || [];
       for (let i = 0; i < attList.length; i++) {
@@ -110,8 +162,27 @@ function setupStoreHandlers() {
         }, tagOpts);
         atts.push(done);
       }
-      const final = { ...task, images: rels, attachments: atts, tags: tagIds || [] };
+      const final = {
+        ...task,
+        images: ingested.images,
+        videos: ingested.videos,
+        media: ingested.media,
+        attachments: atts,
+        tags: tagIds || [],
+      };
       fsStore.saveTasks([...tasks, final]);
+      try {
+        if (plugins.isEnabled('ocr-search') && plugins.assertOcrReady().ok) {
+          plugins.ocrIndex.scheduleIndexRels(APP_DATA, rels, {
+            taskId: task.id,
+            onDone: () => {
+              try {
+                if (win && !win.isDestroyed()) win.webContents.send('ocrIndex:updated');
+              } catch (_) { /* ignore */ }
+            },
+          });
+        }
+      } catch (_) { /* ignore */ }
       return { ok: true, task: final };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -122,26 +193,31 @@ function setupStoreHandlers() {
     fsStore.saveTasks(next);
     return next.find((t) => t.id === id);
   });
-  ipcHandle('tasks:update', async (event, id, { text, images: imgs, attachments }) => {
+  ipcHandle('tasks:update', async (event, id, payload) => {
     try {
-      // imgs 数组每项：已有相对路径、{srcPath} 新增本地文件、或遗留 dataUrl
+      const { text, attachments } = payload || {};
       const tasks = fsStore.loadTasks();
       const old = tasks.find((t) => t.id === id);
       if (!old) return { ok: false, error: '任务不存在' };
       const tagOpts = { tags: old.tags || [] };
-      const existingRels = old.images;
-      // 新增项需要写盘。分配一个未被占用的序号作为文件名后缀，
-      // 避免编辑时删除/新增图片导致同名覆盖（丢数据）。
-      const taken = mediaLayout.imageIndexTakenSet(existingRels, id);
-      let nextIdx = 0;
-      const alloc = () => { while (taken.has(nextIdx)) nextIdx++; taken.add(nextIdx); return nextIdx; };
-      const rels = (imgs || []).map((item) => {
-        const isNew = (typeof item === 'string' && item.startsWith('data:'))
-          || (item && typeof item === 'object' && item.srcPath);
-        return isNew ? fsStore.ingestImage(item, id, alloc(), tagOpts) : item;
+      const existingRels = old.images || [];
+      const existingVideos = old.videos || [];
+      const mediaItems = normalizeMediaPayload({
+        media: payload && payload.media,
+        images: payload && payload.images !== undefined ? payload.images : existingRels,
+        videos: payload && payload.videos !== undefined ? payload.videos : existingVideos,
       });
+      const ingested = ingestOrderedMedia(fsStore, mediaItems, id, tagOpts, {
+        existingImages: existingRels,
+        existingVideos,
+      });
+      const rels = ingested.images;
+      const videoRels = ingested.videos;
       const removed = existingRels.filter((r) => !rels.includes(r));
       fsStore.deleteImages(removed);
+      const removedVids = existingVideos.filter((r) => !videoRels.includes(r));
+      fsStore.deleteVideos(removedVids);
+
       // 附件：新增项 {srcPath,name} 拷贝入 attachments/，已存在的 rel 保留
       const oldAtts = old.attachments || [];
       const atts = [];
@@ -164,8 +240,30 @@ function setupStoreHandlers() {
       const keptRels = atts.map(attRel).filter(Boolean);
       const removedAtts = oldAtts.filter((a) => !keptRels.includes(attRel(a)));
       fsStore.deleteAttachments(removedAtts);
-      const updated = store.updateTask(tasks, id, { text, images: rels, attachments: atts });
+      const updated = store.updateTask(tasks, id, {
+        text,
+        images: rels,
+        videos: videoRels,
+        media: ingested.media,
+        attachments: atts,
+      });
       fsStore.saveTasks(updated);
+      try {
+        if (plugins.isEnabled('ocr-search') && plugins.assertOcrReady().ok) {
+          // 删除的图片清索引；新增/未入库的后台识别
+          for (const r of removed) {
+            try { plugins.ocrIndex.remove(r); } catch (_) { /* ignore */ }
+          }
+          plugins.ocrIndex.scheduleIndexRels(APP_DATA, rels, {
+            taskId: id,
+            onDone: () => {
+              try {
+                if (win && !win.isDestroyed()) win.webContents.send('ocrIndex:updated');
+              } catch (_) { /* ignore */ }
+            },
+          });
+        }
+      } catch (_) { /* ignore */ }
       return { ok: true, task: updated.find((t) => t.id === id) };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -196,6 +294,7 @@ function setupStoreHandlers() {
     const res = trash.purgeFromTrash(fsStore.loadTrash(), id);
     if (res.purged) {
       fsStore.deleteImages(res.purged.images);
+      fsStore.deleteVideos(res.purged.videos);
       fsStore.deleteAttachments(res.purged.attachments);
     }
     fsStore.saveTrash(res.trash);
@@ -205,6 +304,7 @@ function setupStoreHandlers() {
     const res = trash.emptyTrash(fsStore.loadTrash());
     for (const t of res.purged) {
       fsStore.deleteImages(t.images);
+      fsStore.deleteVideos(t.videos);
       fsStore.deleteAttachments(t.attachments);
     }
     fsStore.saveTrash(res.trash);
@@ -226,10 +326,59 @@ function setupStoreHandlers() {
     }
     return out;
   });
+  // 图片 + 视频混合选取（新建/编辑「添加媒体」）
+  ipcHandle('media:pick', async () => {
+    const res = await dialog.showOpenDialog(win, {
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: '图片与视频', extensions: ['jpg', 'jpeg', 'png', 'bmp', 'mp4', 'webm', 'mov'] },
+        { name: '图片', extensions: ['jpg', 'jpeg', 'png', 'bmp'] },
+        { name: '视频', extensions: ['mp4', 'webm', 'mov'] },
+      ],
+    });
+    if (res.canceled) return [];
+    const out = [];
+    for (const p of res.filePaths) {
+      try {
+        const ext = (path.extname(p) || '').slice(1).toLowerCase();
+        if (videos.ALLOWED.has(ext)) {
+          videos.assertVideoFile(p);
+          out.push({ kind: 'video', srcPath: p });
+        } else {
+          const dataUrl = images.dataUrlForPath(p);
+          if (dataUrl) out.push({ kind: 'image', dataUrl });
+        }
+      } catch (_) { /* 跳过非法项 */ }
+    }
+    return out;
+  });
   ipcHandle('image:paste', () => {
     const img = clipboard.readImage();
     if (img.isEmpty()) return null;
     return images.dataUrlForClipboard(img);
+  });
+  // 同步读取，供 renderer 在 paste 事件里立刻 preventDefault
+  try { ipcMain.removeAllListeners('image:pasteSync'); } catch (_) {}
+  ipcMain.on('image:pasteSync', (event) => {
+    try {
+      const img = clipboard.readImage();
+      if (!img.isEmpty()) {
+        event.returnValue = images.dataUrlForClipboard(img);
+        return;
+      }
+      // Windows：资源管理器复制图片文件时，剪贴板可能是文件路径文本
+      const text = (clipboard.readText() || '').trim().replace(/^"(.*)"$/, '$1');
+      if (text && /^([a-zA-Z]:\\|\\\\).+\.(jpe?g|png|bmp)$/i.test(text)) {
+        try {
+          images.assertImageFile(text);
+          event.returnValue = { srcPath: text };
+          return;
+        } catch (_) { /* fall through */ }
+      }
+      event.returnValue = null;
+    } catch (err) {
+      event.returnValue = { error: err.message || String(err) };
+    }
   });
 
   // 附件文件：选择（返回路径列表）与打开（用外部软件）
@@ -244,6 +393,21 @@ function setupStoreHandlers() {
   ipcHandle('file:open', (_e, rel) => {
     const abs = path.join(APP_DATA, rel);
     if (fs.existsSync(abs)) shell.openPath(abs);
+  });
+  // 同步：视频播放需要 file://（自定义协议常不支持 Range）
+  try { ipcMain.removeAllListeners('media:fileUrlSync'); } catch (_) {}
+  ipcMain.on('media:fileUrlSync', (event, rel) => {
+    try {
+      const clean = String(rel || '').replace(/^\/+/, '').replace(/\\/g, '/');
+      if (!clean || clean.includes('..')) {
+        event.returnValue = '';
+        return;
+      }
+      const abs = path.join(APP_DATA, clean);
+      event.returnValue = fs.existsSync(abs) ? pathToFileURL(abs).href : '';
+    } catch (_) {
+      event.returnValue = '';
+    }
   });
 }
 
@@ -303,6 +467,18 @@ function setupSettingsHandlers() {
   // 返回当前存储路径
   ipcHandle('storage:get', () => APP_DATA);
 
+  // 在资源管理器中打开存储目录
+  ipcHandle('storage:open', async () => {
+    try {
+      fs.mkdirSync(APP_DATA, { recursive: true });
+      const err = await shell.openPath(APP_DATA);
+      if (err) return { ok: false, error: err };
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
   // 一键清理孤儿文件（未被任务或回收站引用的图片/附件）
   ipcHandle('storage:cleanup', () => {
     const res = cleanupOrphans(APP_DATA);
@@ -321,6 +497,36 @@ function setupSettingsHandlers() {
       return { ok: true, path: res.filePath };
     } catch (err) {
       return { ok: false, error: err.message };
+    }
+  });
+
+  ipcHandle('export:tasks', async (_e, options = {}) => {
+    const format = options.format === 'markdown' || options.format === 'html' ? options.format : 'pdf';
+    const filters =
+      format === 'markdown' ? [{ name: 'Markdown', extensions: ['md'] }]
+        : format === 'html' ? [{ name: 'HTML', extensions: ['html'] }]
+          : [{ name: 'PDF', extensions: ['pdf'] }];
+    const res = await dialog.showSaveDialog(win, {
+      title: '导出任务',
+      defaultPath: exportTasks.defaultExportName(format),
+      filters,
+    });
+    if (res.canceled || !res.filePath) return { ok: false, error: '已取消' };
+    const opts = {
+      tagIds: Array.isArray(options.tagIds) ? options.tagIds : [],
+      status: options.status || 'all',
+      sortKey: options.sortKey || 'createdAt',
+      includeImages: !!options.includeImages,
+      format,
+    };
+    try {
+      const tasks = fsStore.loadTasks();
+      const tags = fsStore.loadTags();
+      if (format === 'html') return exportTasks.writeHtmlFile(res.filePath, tasks, tags, opts, APP_DATA);
+      if (format === 'markdown') return exportTasks.writeMarkdownFile(res.filePath, tasks, tags, opts, APP_DATA);
+      return await exportTasks.writePdfFile(res.filePath, tasks, tags, opts, APP_DATA, BrowserWindow);
+    } catch (err) {
+      return { ok: false, error: err.message || '导出失败' };
     }
   });
 
@@ -381,6 +587,45 @@ function setupSettingsHandlers() {
     notifyStorageChanged();
     return { ok: true, changed: true, path: def };
   });
+
+  ipcHandle('app:getVersion', () => app.getVersion());
+
+  ipcHandle('update:check', async () => {
+    const current = app.getVersion();
+    try {
+      const res = await net.fetch(UPDATE_FEED_URL, {
+        method: 'GET',
+        headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+      });
+      if (!res.ok) {
+        return { ok: false, error: `无法获取更新信息（HTTP ${res.status}）`, current };
+      }
+      let feed;
+      try {
+        feed = JSON.parse(await res.text());
+      } catch (_) {
+        return { ok: false, error: '更新信息格式错误', current };
+      }
+      const result = evaluateUpdate(current, feed);
+      if (result.status === 'invalid') {
+        return { ok: false, error: result.error || '更新信息不完整', current };
+      }
+      return { ok: true, current, ...result };
+    } catch (err) {
+      return { ok: false, error: (err && err.message) || '网络错误，请稍后重试', current };
+    }
+  });
+
+  ipcHandle('shell:openExternal', async (_e, url) => {
+    const u = String(url || '').trim();
+    if (!/^https?:\/\//i.test(u)) return { ok: false, error: '无效链接' };
+    try {
+      await shell.openExternal(u);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: (err && err.message) || '无法打开链接' };
+    }
+  });
 }
 
 function notifyStorageChanged() {
@@ -394,7 +639,99 @@ function setupWindowHandlers() {
     win.setAlwaysOnTop(!!flag);
     return !!flag;
   });
+  ipcHandle('window:setTitleBarOverlay', (_e, opts = {}) => {
+    if (!win || win.isDestroyed() || typeof win.setTitleBarOverlay !== 'function') {
+      return { ok: false };
+    }
+    try {
+      win.setTitleBarOverlay({
+        color: opts.color || '#ffffff',
+        symbolColor: opts.symbolColor || '#303133',
+        height: 40,
+      });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
 }
+
+function setupOcrHandlers() {
+  plugins.ocrIndex.setScheduleProgressHandler((p) => {
+    try {
+      if (win && !win.isDestroyed()) win.webContents.send('ocrIndex:autoProgress', p);
+    } catch (_) { /* ignore */ }
+  });
+  ipcHandle('ocr:status', () => ocr.langStatus());
+  ipcHandle('ocr:recognize', async (event, dataUrl) => {
+    const gate = plugins.assertOcrReady();
+    if (!gate.ok) return gate;
+    const onProgress = (p) => {
+      try { event.sender.send('ocr:progress', p); } catch (_) { /* ignore */ }
+    };
+    return ocr.recognize(dataUrl, onProgress);
+  });
+  ipcHandle('ocrIndex:getAll', () => plugins.ocrIndex.getAllTexts());
+  ipcHandle('ocrIndex:set', (_e, rel, text) => plugins.ocrIndex.setText(rel, text));
+  ipcHandle('ocrIndex:clear', () => plugins.ocrIndex.clear());
+  ipcHandle('ocrIndex:stats', () => {
+    try {
+      return { ok: true, ...plugins.ocrIndex.stats(fsStore.loadTasks(), APP_DATA) };
+    } catch (err) {
+      return { ok: false, error: err.message || String(err) };
+    }
+  });
+  ipcHandle('ocrIndex:build', async (event, opts) => {
+    const gate = plugins.assertOcrReady();
+    if (!gate.ok) return gate;
+    if (!plugins.isEnabled('ocr-search')) {
+      return { ok: false, error: '请先开启「图内文字搜索」插件', code: 'DISABLED' };
+    }
+    const onProgress = (p) => {
+      try { event.sender.send('ocrIndex:progress', p); } catch (_) { /* ignore */ }
+    };
+    try {
+      return await plugins.ocrIndex.buildIndex({
+        storageRoot: APP_DATA,
+        tasks: fsStore.loadTasks(),
+        force: !!(opts && opts.force),
+        onProgress,
+      });
+    } catch (err) {
+      return { ok: false, error: err.message || String(err) };
+    }
+  });
+  ipcHandle('ocrIndex:cancelBuild', () => {
+    plugins.ocrIndex.cancelBuild();
+    return { ok: true };
+  });
+}
+
+function setupPluginHandlers() {
+  ipcHandle('plugins:list', () => plugins.listPlugins());
+  ipcHandle('plugins:setEnabled', (_e, id, enabled) => plugins.setEnabled(id, enabled));
+  ipcHandle('plugins:install', async (event, id) => {
+    const onProgress = (p) => {
+      try { event.sender.send('plugins:progress', { id, ...p }); } catch (_) { /* ignore */ }
+    };
+    return plugins.install(id, onProgress);
+  });
+  ipcHandle('plugins:uninstall', (_e, id) => plugins.uninstall(id));
+  ipcHandle('plugins:clipboardPeek', (_e, opts) => plugins.clipboardPeek(opts || {}));
+}
+
+const MIME_BY_EXT = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+  '.svg': 'image/svg+xml',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+};
 
 function setupProtocol() {
   protocol.handle('taskimage', (request) => {
@@ -402,16 +739,28 @@ function setupProtocol() {
       const url = new URL(request.url);
       // 形如 taskimage://local/images/xxx.png，rel 取 pathname 去掉首斜杠
       const rel = decodeURIComponent(url.pathname).replace(/^\//, '');
+      if (!rel || rel.includes('..')) return new Response('', { status: 404 });
       const abs = path.join(APP_DATA, rel);
-      return netFetchIfExists(abs);
+      return netFetchIfExists(abs, request);
     } catch (_) {
       return new Response('', { status: 404 });
     }
   });
 }
-function netFetchIfExists(abs) {
+async function netFetchIfExists(abs, request) {
   if (!fs.existsSync(abs)) return new Response('', { status: 404 });
-  return net.fetch(pathToFileURL(abs).toString());
+  const fwd = {};
+  try {
+    const range = request && request.headers && request.headers.get('Range');
+    if (range) fwd.Range = range;
+  } catch (_) { /* ignore */ }
+  const res = await net.fetch(pathToFileURL(abs).href, { headers: fwd });
+  const ext = path.extname(abs).toLowerCase();
+  const mime = MIME_BY_EXT[ext];
+  if (!mime) return res;
+  const headers = new Headers(res.headers);
+  headers.set('Content-Type', mime);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
 // 单实例锁：防止残留的重复进程同时读写 tasks.json / 争抢 Chromium 缓存，
@@ -431,6 +780,8 @@ app.whenReady().then(() => {
   setupTagHandlers();
   setupSettingsHandlers();
   setupWindowHandlers();
+  setupOcrHandlers();
+  setupPluginHandlers();
   // 注册 F12 切换 DevTools（removeMenu 后默认快捷键会失效，故用全局快捷键）
   globalShortcut.register('F12', () => { win.webContents.toggleDevTools(); });
   globalShortcut.register('Ctrl+Shift+I', () => { win.webContents.toggleDevTools(); });

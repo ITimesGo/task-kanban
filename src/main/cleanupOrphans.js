@@ -70,6 +70,10 @@ function cleanupOrphans(dir) {
   const collect = (list) => {
     for (const t of list || []) {
       for (const img of t.images || []) if (typeof img === 'string') referenced.add(img.replace(/\\/g, '/'));
+      for (const vid of t.videos || []) if (typeof vid === 'string') referenced.add(vid.replace(/\\/g, '/'));
+      for (const m of t.media || []) {
+        if (m && typeof m.rel === 'string') referenced.add(m.rel.replace(/\\/g, '/'));
+      }
       for (const att of t.attachments || []) {
         if (typeof att === 'string') referenced.add(att.replace(/\\/g, '/'));
         else if (att && att.rel) referenced.add(String(att.rel).replace(/\\/g, '/'));
@@ -107,6 +111,7 @@ function cleanupOrphans(dir) {
 
   cleanKind('attachments');
   cleanKind('images');
+  cleanKind('videos');
 
   return { found, deleted, orphans };
 }

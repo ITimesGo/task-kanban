@@ -1,5 +1,5 @@
 function updateCreateBtnState() {
-  const hasContent = $('#newText').value.trim() || newImages.length > 0;
+  const hasContent = $('#newText').value.trim() || newMedia.length > 0 || newAttachments.length > 0;
   $('#createBtn').disabled = !hasContent;
 }
 
@@ -40,18 +40,41 @@ function renderNewTagSelect() {
 
 function renderThumbs() {
   ui.renderNewThumbs({
-    images: newImages,
-    onRemove: (i) => { newImages.splice(i, 1); renderThumbs(); },
+    media: newMedia,
+    onRemove: (i) => { newMedia.splice(i, 1); renderThumbs(); },
+    onReorder: (from, to) => {
+      newMedia = moveMediaItem(newMedia, from, to);
+      renderThumbs();
+    },
     onPreview: window.showLightbox,
   });
   updateCreateBtnState();
+}
+
+function canAddImage() {
+  return newMediaCounts().images < MAX_NEW_IMAGES;
+}
+function canAddVideo() {
+  return newMediaCounts().videos < MAX_NEW_VIDEOS;
+}
+
+function addImageToCreate(value) {
+  if (!canAddImage()) { alert('最多添加10张图片'); return false; }
+  newMedia.push({ kind: 'image', value });
+  return true;
+}
+
+function addVideoToCreate(value) {
+  if (!canAddVideo()) { alert('最多添加3个视频'); return false; }
+  newMedia.push({ kind: 'video', value });
+  return true;
 }
 
 function renderNewAttachments() {
   const box = document.getElementById('newAttachments');
   if (!box) return;
   box.innerHTML = newAttachments.length ? newAttachments.map(function(a, i){
-    return '<span class="att-item" title="' + ui.esc(a.name) + '"><span class="att-main">' + ui.esc(a.name) + '</span><button class="att-remove" data-i="'+i+'">×</button></span>';
+    return '<span class="att-item" title="' + ui.esc(a.name) + '"><span class="att-main">' + ui.esc(a.name) + '</span><button type="button" class="att-remove" data-i="'+i+'" aria-label="删除">' + ui.CLOSE_ICON + '</button></span>';
   }).join('') : '';
   box.querySelectorAll('.att-remove').forEach(function(btn){
     btn.addEventListener('click', function(){ newAttachments.splice(Number(btn.dataset.i),1); renderNewAttachments(); updateCreateBtnState(); });
@@ -72,10 +95,14 @@ document.getElementById('addFileBtn').addEventListener('click', async function()
 });
 
 window.onAddImage = async () => {
-  const dataUrls = await API.pickImages();
-  for (const d of dataUrls || []) {
-    if (newImages.length >= 10) { alert('最多添加10张图片'); break; }
-    newImages.push(d);
+  const items = await API.pickMedia();
+  for (const it of items || []) {
+    if (!it) continue;
+    if (it.kind === 'video') {
+      if (!addVideoToCreate({ srcPath: it.srcPath })) break;
+    } else if (it.dataUrl) {
+      if (!addImageToCreate(it.dataUrl)) break;
+    }
   }
   renderThumbs();
 };
@@ -86,18 +113,20 @@ async function createTask() {
   const sub = API.onAttachmentProgress(onProgress);
   if (atts.length) showUploadProgress('createProgress', atts.length);
   try {
-    // 图片：dataUrl 或后续扩展的 {srcPath}；附件仍走路径拷贝
-    const imgs = newImages.map((p) => (
-      p && typeof p === 'object' && p.srcPath ? p
-        : (String(p).startsWith('data:') ? p : { srcPath: p })
-    ));
+    const media = [];
+    for (const m of newMedia) {
+      media.push({ kind: m.kind === 'video' ? 'video' : 'image', value: m.value });
+    }
     const res = await API.createTask({
-      text: $('#newText').value, images: imgs, attachments: atts, tags: newTags.slice(),
+      text: $('#newText').value,
+      media,
+      attachments: atts,
+      tags: newTags.slice(),
     });
     if (!res.ok) { alert(res.error || '创建失败'); return; }
     if (newTags.length) await API.setTaskTags(res.task.id, newTags);
     $('#newText').value = '';
-    newImages = [];
+    newMedia = [];
     newTags = [];
     newAttachments = [];
     renderThumbs();
@@ -120,6 +149,13 @@ const createPanel = document.getElementById('createPanel');
 const MAX_IMG_MB = 10;
 createPanel.addEventListener('dragover', (e) => {
   e.preventDefault();
+  e.stopPropagation();
+  if (isThumbReorderEvent(e)) {
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    createPanel.classList.remove('drag-over');
+    return;
+  }
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
   createPanel.classList.add('drag-over');
 });
 createPanel.addEventListener('dragleave', (e) => {
@@ -128,33 +164,85 @@ createPanel.addEventListener('dragleave', (e) => {
 });
 createPanel.addEventListener('drop', (e) => {
   e.preventDefault();
+  e.stopPropagation();
   createPanel.classList.remove('drag-over');
+  if (isThumbReorderEvent(e)) return;
   const files = [...(e.dataTransfer?.files || [])];
   if (!files.length) return;
+  let added = 0;
   for (const f of files) {
     if (isImageFile(f)) {
       if (f.size > MAX_IMG_MB * 1024 * 1024) { alert(`图片超过${MAX_IMG_MB}MB`); continue; }
       const reader = new FileReader();
       reader.onload = () => {
-        if (newImages.length >= 10) { alert('最多添加10张图片'); return; }
-        newImages.push(reader.result);
+        if (!addImageToCreate(reader.result)) return;
         renderThumbs();
       };
       reader.readAsDataURL(f);
+      added += 1;
+    } else if (isVideoFile(f)) {
+      const v = resolveVideoDrop(f);
+      if (!v) continue;
+      if (!addVideoToCreate(v)) continue;
+      added += 1;
+      renderThumbs();
     } else {
       const p = resolveAttachmentDrop(f);
-      if (p) addAttachmentsToCreate([p]);
+      if (p) {
+        addAttachmentsToCreate([p]);
+        added += 1;
+      }
     }
+  }
+  if (!added && files.length) {
+    alert('未能添加文件。视频请使用 mp4/webm/mov，或点「添加图片或视频」选择。');
   }
 });
 
-document.addEventListener('paste', async (e) => {
-  const target = e.target;
-  const inCreate = target.id === 'newText' || target.closest('#createPanel');
-  if (!inCreate) return;
-  const img = await API.pasteImage();
-  if (!img) return;
-  if (newImages.length >= 10) { alert('最多添加10张图片'); return; }
-  newImages.push(img);
+function addPastedImages(items) {
+  for (const item of items) {
+    if (!addImageToCreate(item)) break;
+  }
   renderThumbs();
+}
+
+bindContentPaste({
+  getZone: () => document.getElementById('createPanel'),
+  getTextarea: () => document.getElementById('newText'),
+  addImages: (items) => addPastedImages(items),
+  onTextChange: updateCreateBtnState,
+  maxMb: MAX_IMG_MB,
 });
+
+/** 剪贴板快贴插件：编辑中优先写入编辑区，否则写入新建区 */
+window.applyClipboardQuick = (payload) => {
+  if (!payload || !payload.type) return false;
+  const overlay = document.getElementById('detailOverlay');
+  const editOpen = detailState.mode === 'edit'
+    && overlay
+    && !overlay.classList.contains('hidden')
+    && typeof window.applyClipboardToEdit === 'function';
+  if (editOpen) {
+    return window.applyClipboardToEdit(payload);
+  }
+  if (payload.type === 'text') {
+    const ta = document.getElementById('newText');
+    if (!ta) return false;
+    const chunk = String(payload.text || '');
+    if (!chunk) return false;
+    if (ta.value && !/\n$/.test(ta.value)) ta.value += '\n';
+    ta.value += chunk;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    updateCreateBtnState();
+  } else if (payload.type === 'image' && payload.dataUrl) {
+    if (!addImageToCreate(payload.dataUrl)) return false;
+    renderThumbs();
+  } else {
+    return false;
+  }
+  const panel = document.getElementById('createPanel');
+  if (panel && typeof panel.scrollIntoView === 'function') {
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  return true;
+};

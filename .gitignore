@@ -3,3 +3,10 @@ dist/
 out/
 build/
 *.log
+*.exe
+.cursor/
+dist.zip
+_shot.png
+.DS_Store
+Thumbs.db
+*.tmp

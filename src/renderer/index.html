@@ -3,50 +3,449 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; img-src 'self' data: taskimage: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
-  <title>简易任务看板</title>
+        content="default-src 'self'; img-src 'self' data: file: taskimage: blob:; media-src 'self' file: taskimage: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>任务看板</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div id="titlebar">
+    <div id="titlebar-title">任务看板</div>
+    <div id="titlebar-drag" aria-hidden="true"></div>
+    <div id="titlebar-controls">
+      <button id="pinBtn" class="titlebar-btn" type="button" title="窗口置顶" aria-label="窗口置顶">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1z"/></svg>
+      </button>
+    </div>
+  </div>
+
   <header id="toolbar">
-    <h1>简易任务看板</h1>
-    <nav id="filters">
-      <button class="filter active" data-filter="all">全部</button>
-      <button class="filter" data-filter="pending">待执行</button>
-      <button class="filter" data-filter="done">已执行</button>
-    </nav>
+    <div id="toolbarPrimary" class="toolbar-row">
+      <div id="statusWrap" class="status-seg" role="tablist" aria-label="任务状态">
+        <button type="button" class="status-seg-btn" data-filter="all" role="tab">全部</button>
+        <button type="button" class="status-seg-btn active" data-filter="pending" role="tab" aria-selected="true">待执行</button>
+        <button type="button" class="status-seg-btn" data-filter="done" role="tab">已执行</button>
+      </div>
+      <div id="toolbarPrimaryRight" class="toolbar-primary-right">
+        <div id="tagFilterWrap">
+          <div id="tagFilterControl" class="multi-select">
+            <div id="tagFilterSelected" class="ms-selected"><span class="ms-placeholder">选择标签</span></div>
+            <button type="button" id="tagFilterClear" class="ms-clear" title="清空" aria-label="清空选中标签" tabindex="-1">
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.5 13.1a.75.75 0 0 1-1.06 1.06L12 13.06l-2.44 2.45a.75.75 0 1 1-1.06-1.06L10.94 12 8.5 9.56a.75.75 0 0 1 1.06-1.06L12 10.94l2.44-2.44a.75.75 0 0 1 1.06 1.06L13.06 12l2.44 2.1z"/></svg>
+            </button>
+            <span id="tagFilterArrow" class="ms-arrow">▾</span>
+          </div>
+          <div id="tagFilterDropdown" class="ms-dropdown hidden">
+            <input id="tagFilterSearch" class="ms-search" type="text" placeholder="搜索标签…" />
+            <div id="tagFilterOptions"></div>
+          </div>
+        </div>
+        <button id="filtersToggle" type="button" class="filters-toggle" title="筛选" aria-label="展开筛选" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M7 12h10M10 19h4"/></svg>
+          <span>筛选</span>
+          <span id="filtersBadge" class="filters-badge hidden" aria-hidden="true">0</span>
+        </button>
+        <button id="settingsBtn" type="button" title="设置" aria-label="设置">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </div>
+    <div id="toolbarSecondary" class="toolbar-row toolbar-secondary hidden" hidden>
+      <div id="sortWrap">
+        <div id="sortSelect" class="range-select">
+          <span id="sortSelected" class="range-value">按创建时间</span>
+          <span class="ms-arrow">▾</span>
+        </div>
+        <div id="sortDropdown" class="range-dropdown hidden"></div>
+      </div>
+      <div id="rangeWrap">
+        <div id="rangeSelect" class="range-select">
+          <span id="rangeSelected" class="range-value">全部时间</span>
+          <span class="ms-arrow">▾</span>
+        </div>
+        <div id="rangeDropdown" class="range-dropdown hidden"></div>
+      </div>
+      <div id="searchWrap" class="search-wrap-inline">
+        <svg class="search-inline-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="searchInput" type="search" placeholder="搜索正文或附件名…" autocomplete="off" />
+      </div>
+      <button id="filtersReset" type="button" class="filters-reset hidden" title="恢复二级筛选默认" aria-label="恢复默认" hidden>恢复默认</button>
+    </div>
   </header>
+
+  <div id="settingsOverlay" class="overlay hidden">
+    <div id="settingsModal" class="modal settings-modal">
+      <div class="modal-header">
+        <h2>设置</h2>
+        <button id="settingsClose" class="modal-close" type="button" title="关闭" aria-label="关闭">
+          <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.2 2.2l7.6 7.6M9.8 2.2L2.2 9.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="settings-layout">
+        <div class="settings-nav">
+          <button class="settings-nav-item active" data-panel="panel-storage">数据存储</button>
+          <button class="settings-nav-item" data-panel="panel-trash">回收站</button>
+          <button class="settings-nav-item" data-panel="panel-backup">备份</button>
+          <button class="settings-nav-item" data-panel="panel-export">导出</button>
+          <button class="settings-nav-item" data-panel="panel-defaults">常用默认</button>
+          <button class="settings-nav-item" data-panel="panel-theme">外观</button>
+          <button class="settings-nav-item" data-panel="panel-plugins">插件</button>
+          <button class="settings-nav-item" data-panel="panel-about">关于</button>
+        </div>
+        <div class="settings-content">
+          <div class="settings-panel" id="panel-storage">
+            <div class="setting-row">
+              <div class="setting-label">数据存储路径</div>
+              <div class="setting-value" id="storagePathText" title="">…</div>
+              <div class="setting-actions">
+                <button id="storageOpenBtn">打开目录</button>
+                <button id="storageChangeBtn">更换路径</button>
+                <button id="storageResetBtn">恢复默认</button>
+              </div>
+              <p class="setting-hint">上传的图片和任务数据保存在此目录。更换后现有数据会自动迁移。</p>
+            </div>
+            <div class="setting-row" style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px;">
+              <div class="setting-label">清理空间</div>
+              <div class="setting-actions">
+                <button id="cleanupBtn" class="primary" style="background:var(--primary);color:var(--on-primary);border-color:var(--primary);">清理孤立文件</button>
+              </div>
+              <p class="setting-hint">删除未被任何任务或回收站引用的图片和附件文件，释放空间。</p>
+            </div>
+          </div>
+          <div class="settings-panel hidden" id="panel-trash">
+            <div class="setting-row">
+              <div class="setting-label-row">
+                <div class="setting-label">回收站</div>
+                <button id="trashEmptyBtn" class="danger">清空回收站</button>
+              </div>
+              <p class="setting-hint" style="margin-bottom:12px">删除的任务会暂时留在这里，可恢复或彻底删除。可勾选后批量操作。</p>
+              <div id="trashToolbar" class="trash-toolbar hidden" hidden>
+                <label class="trash-select-all">
+                  <input type="checkbox" id="trashSelectAll">
+                  <span>全选</span>
+                </label>
+                <span id="trashSelectedCount" class="trash-selected-count">已选 0 项</span>
+                <div class="trash-batch-actions">
+                  <button type="button" id="trashBatchRestore" disabled>恢复所选</button>
+                  <button type="button" id="trashBatchPurge" class="danger" disabled>彻底删除所选</button>
+                </div>
+              </div>
+              <div id="trashList" class="trash-list"></div>
+            </div>
+          </div>
+          <div class="settings-panel hidden" id="panel-backup">
+            <div class="setting-row">
+              <div class="setting-label">导出备份</div>
+              <div class="setting-actions">
+                <button id="backupExportBtn" class="primary" style="background:var(--primary);color:var(--on-primary);border-color:var(--primary);">导出 ZIP</button>
+              </div>
+              <p class="setting-hint">导出任务、标签、回收站及图片/附件为一个 zip 文件。</p>
+            </div>
+            <div class="setting-row" style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px;">
+              <div class="setting-label">导入备份</div>
+              <div class="setting-actions">
+                <button id="backupImportBtn">导入 ZIP</button>
+              </div>
+              <p class="setting-hint">合并导入：相同 id 的任务/标签会跳过，不覆盖现有数据。</p>
+            </div>
+          </div>
+          <div class="settings-panel hidden" id="panel-export">
+            <div class="setting-row">
+              <div class="setting-label">导出任务</div>
+              <p class="setting-hint">按标签筛选，按时间排序，导出为 PDF / Markdown / HTML。</p>
+              <div class="export-field">
+                <div class="export-label">标签（不选为全部）</div>
+                <div id="exportTagWrap" class="export-tag-wrap">
+                  <div id="exportTagControl" class="multi-select">
+                    <div id="exportTagSelected" class="ms-selected"><span class="ms-placeholder">选择标签</span></div>
+                    <button type="button" id="exportTagClear" class="ms-clear" title="清空" aria-label="清空选中标签" tabindex="-1">
+                      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.5 13.1a.75.75 0 0 1-1.06 1.06L12 13.06l-2.44 2.45a.75.75 0 1 1-1.06-1.06L10.94 12 8.5 9.56a.75.75 0 0 1 1.06-1.06L12 10.94l2.44-2.44a.75.75 0 0 1 1.06 1.06L13.06 12l2.44 2.1z"/></svg>
+                    </button>
+                    <span class="ms-arrow">▾</span>
+                  </div>
+                  <div id="exportTagDropdown" class="ms-dropdown hidden">
+                    <input id="exportTagSearch" class="ms-search" type="text" placeholder="搜索标签…" />
+                    <div id="exportTagOptions"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="export-field export-inline">
+                <div class="export-select-field">
+                  <div class="export-label">状态</div>
+                  <div id="exportStatusWrap" class="export-select-wrap">
+                    <div id="exportStatusSelect" class="range-select" tabindex="0">
+                      <span id="exportStatusSelected" class="range-value">全部</span>
+                      <span class="ms-arrow">▾</span>
+                    </div>
+                    <div id="exportStatusDropdown" class="range-dropdown hidden"></div>
+                  </div>
+                </div>
+                <div class="export-select-field">
+                  <div class="export-label">排序</div>
+                  <div id="exportSortWrap" class="export-select-wrap">
+                    <div id="exportSortSelect" class="range-select" tabindex="0">
+                      <span id="exportSortSelected" class="range-value">创建时间</span>
+                      <span class="ms-arrow">▾</span>
+                    </div>
+                    <div id="exportSortDropdown" class="range-dropdown hidden"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="export-field">
+                <div class="export-label">格式</div>
+                <div class="export-format" role="radiogroup" aria-label="导出格式">
+                  <label><input type="radio" name="exportFormat" value="pdf" checked> PDF</label>
+                  <label><input type="radio" name="exportFormat" value="markdown"> Markdown</label>
+                  <label><input type="radio" name="exportFormat" value="html"> HTML</label>
+                </div>
+              </div>
+              <label class="export-check">
+                <input type="checkbox" id="exportIncludeImages" checked>
+                包含图片
+              </label>
+              <div class="setting-actions">
+                <button id="exportTasksBtn" class="primary" style="background:var(--primary);color:var(--on-primary);border-color:var(--primary);">导出</button>
+              </div>
+            </div>
+          </div>
+          <div class="settings-panel hidden" id="panel-defaults">
+            <div class="setting-row">
+              <div class="setting-label">常用默认</div>
+              <p class="setting-hint" style="margin-bottom:14px">启动时使用的列表偏好。顶栏临时切换不会改这里的设置。</p>
+              <div class="defaults-grid">
+                <div class="defaults-field">
+                  <div class="export-label">默认状态</div>
+                  <div class="defaults-select-wrap" id="defFilterWrap">
+                    <div id="defFilterSelect" class="range-select defaults-trigger" tabindex="0">
+                      <span id="defFilterSelected" class="range-value">待执行</span>
+                      <span class="ms-arrow">▾</span>
+                    </div>
+                    <div id="defFilterDropdown" class="range-dropdown hidden"></div>
+                  </div>
+                </div>
+                <div class="defaults-field">
+                  <div class="export-label">默认排序</div>
+                  <div class="defaults-select-wrap" id="defSortWrap">
+                    <div id="defSortSelect" class="range-select defaults-trigger" tabindex="0">
+                      <span id="defSortSelected" class="range-value">按创建时间</span>
+                      <span class="ms-arrow">▾</span>
+                    </div>
+                    <div id="defSortDropdown" class="range-dropdown hidden"></div>
+                  </div>
+                </div>
+                <div class="defaults-field">
+                  <div class="export-label">默认时间范围</div>
+                  <div class="defaults-select-wrap" id="defRangeWrap">
+                    <div id="defRangeSelect" class="range-select defaults-trigger" tabindex="0">
+                      <span id="defRangeSelected" class="range-value">全部时间</span>
+                      <span class="ms-arrow">▾</span>
+                    </div>
+                    <div id="defRangeDropdown" class="range-dropdown hidden"></div>
+                  </div>
+                </div>
+                <div class="defaults-field">
+                  <div class="export-label">默认每页条数</div>
+                  <div class="defaults-select-wrap" id="defPageSizeWrap">
+                    <div id="defPageSizeSelect" class="range-select defaults-trigger" tabindex="0">
+                      <span id="defPageSizeSelected" class="range-value">50 条/页</span>
+                      <span class="ms-arrow">▾</span>
+                    </div>
+                    <div id="defPageSizeDropdown" class="range-dropdown hidden"></div>
+                  </div>
+                </div>
+                <div class="defaults-field defaults-field--check">
+                  <div class="export-label">筛选栏默认展开</div>
+                  <label class="export-check defaults-check">
+                    <input type="checkbox" id="defFiltersExpanded">
+                    启动时展开排序 / 时间 / 搜索
+                  </label>
+                </div>
+              </div>
+              <div class="setting-actions defaults-actions">
+                <button type="button" id="defApplyBtn" class="primary" style="background:var(--primary);color:var(--on-primary);border-color:var(--primary);">立即应用</button>
+                <button type="button" id="defResetBtn">恢复默认</button>
+              </div>
+              <p class="setting-hint" id="defSaveHint">更改会自动保存；「立即应用」同步到当前列表。</p>
+            </div>
+          </div>
+          <div class="settings-panel hidden" id="panel-theme">
+            <div class="setting-row">
+              <div class="setting-label">皮肤</div>
+              <p class="setting-hint" style="margin-bottom:12px">切换整套界面风格，重启后仍然保留。</p>
+              <div class="skin-options-wrap" id="skinOptionsWrap">
+                <div id="skinOptions" class="skin-options" tabindex="0" aria-label="皮肤列表"></div>
+                <button type="button" id="skinScrollPrev" class="skin-nav skin-nav-prev" title="向左" aria-label="向左查看更多皮肤" hidden>
+                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M10.2 3.2L5.4 8l4.8 4.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <button type="button" id="skinScrollNext" class="skin-nav skin-nav-next" title="向右" aria-label="向右查看更多皮肤" hidden>
+                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M5.8 3.2L10.6 8 5.8 12.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="setting-row" id="themeColorSection" style="margin-top:18px;border-top:1px solid var(--border);padding-top:16px;">
+              <div class="setting-label">主题颜色</div>
+              <p class="setting-hint" style="margin-bottom:12px">可选预设，或用取色器 / 色值自定义。</p>
+              <div id="themeOptions" class="theme-options"></div>
+              <div class="theme-custom" id="themeCustomWrap">
+                <div class="export-label">自定义</div>
+                <div class="theme-custom-row">
+                  <input type="color" id="themeColorPicker" class="theme-color-picker" value="#409eff" title="取色器" aria-label="取色器">
+                  <input type="text" id="themeColorInput" class="theme-color-input" value="#409eff" placeholder="#409eff" maxlength="7" spellcheck="false" aria-label="色值">
+                  <span id="themeColorPreview" class="theme-preview" title="预览" aria-label="颜色预览"></span>
+                </div>
+                <p class="setting-hint" id="themeColorHint">支持 #RGB / #RRGGBB；过浅或无效时预览为黑色且不会应用</p>
+              </div>
+            </div>
+          </div>
+          <div class="settings-panel hidden" id="panel-plugins">
+            <div class="setting-row">
+              <div class="setting-label">插件</div>
+              <p class="setting-hint" style="margin-bottom:12px">按需安装可选能力，不占用主程序体积。可随时开启、关闭或卸载。</p>
+              <div id="pluginList" class="plugin-list"></div>
+            </div>
+          </div>
+          <div class="settings-panel hidden" id="panel-about">
+            <div class="setting-row">
+              <div class="setting-label">关于</div>
+              <div class="setting-value" id="aboutVersionText">版本 …</div>
+              <div class="setting-actions" style="margin-top:12px;gap:8px;flex-wrap:wrap">
+                <button id="checkUpdateBtn" class="primary" type="button" style="background:var(--primary);color:var(--on-primary);border-color:var(--primary);">检查更新</button>
+                <button id="openUpdateUrlBtn" type="button" class="hidden" hidden>打开下载页</button>
+              </div>
+              <p class="setting-hint" id="aboutUpdateHint" style="margin-top:12px">点击检查是否有新版本。当前更新源为占位地址，发版前请在源码中改成真实 JSON 地址。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <main id="layout">
     <section id="list">
-      <div id="cards"></div>
+      <div id="cards"><p class="empty">加载中…</p></div>
+      <div id="pagination" class="pagination hidden"></div>
     </section>
 
     <section id="createPanel">
       <h2>创建任务</h2>
       <textarea id="newText" rows="8" placeholder="输入任务描述或备注…"></textarea>
       <div id="newThumbs" class="thumbs"></div>
+      <div id="createTags" class="tag-select"></div>
+      <div id="newAttachments" class="attachments"></div>
       <div id="createActions">
-        <button id="addImageBtn">添加图片</button>
+        <button id="addFileBtn" class="icon-btn" title="添加附件" aria-label="添加附件"><svg class="att-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+        <button id="addImageBtn" class="icon-btn" title="添加图片或视频" aria-label="添加图片或视频"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></button>
+        <button id="manTagBtn" class="icon-btn" title="管理标签" aria-label="管理标签"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></button>
         <button id="createBtn" class="primary">创建任务</button>
       </div>
-      <p class="hint">支持 Ctrl+V 粘贴图片（jpg/png/bmp，≤10MB，最多5张）</p>
+      <div id="createProgress" class="upload-progress hidden">
+        <div class="up-bar"><div class="up-fill" id="createProgressFill"></div></div>
+        <span class="up-text" id="createProgressText"></span>
+      </div>
+      <p class="hint">支持拖入或 Ctrl+V 粘贴；缩略图可拖动调整顺序（图片≤10MB×10；视频 mp4/webm/mov≤200MB×3）</p>
     </section>
   </main>
 
   <div id="detailOverlay" class="overlay hidden">
     <div id="detailModal" class="modal">
-      <div id="detailBody"></div>
-      <div id="detailActions"></div>
+      <div class="modal-header detail-top">
+        <div class="detail-top-row">
+          <div id="detailHead" class="detail-head"></div>
+          <button id="detailClose" class="modal-close" type="button" title="关闭" aria-label="关闭">
+            <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.2 2.2l7.6 7.6M9.8 2.2L2.2 9.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div id="detailMeta" class="detail-meta" hidden></div>
+      </div>
+      <div id="detailBody" class="modal-body"></div>
+      <div id="detailActions" class="modal-footer"></div>
     </div>
   </div>
 
   <div id="lightboxOverlay" class="overlay hidden">
-    <img id="lightboxImg" />
+    <div class="lightbox-toolbar" id="lightboxToolbar">
+      <button type="button" id="lightboxOcrBtn" class="lightbox-tool-btn" title="离线识别图片中的文字" hidden>提取文字</button>
+      <button type="button" id="lightboxCloseBtn" class="lightbox-tool-btn" title="关闭">关闭</button>
+    </div>
+    <img id="lightboxImg" alt="" />
+    <video id="lightboxVideo" class="hidden" controls playsinline></video>
+    <aside id="lightboxOcrPanel" class="lightbox-ocr-panel hidden" aria-label="文字识别结果">
+      <div class="lightbox-ocr-head">
+        <strong>识别文字</strong>
+        <div class="lightbox-ocr-actions">
+          <button type="button" id="lightboxOcrCopy" class="lightbox-tool-btn" disabled>复制</button>
+          <button type="button" id="lightboxOcrHide" class="lightbox-tool-btn">收起</button>
+        </div>
+      </div>
+      <p id="lightboxOcrStatus" class="lightbox-ocr-status"></p>
+      <textarea id="lightboxOcrText" class="lightbox-ocr-text" readonly placeholder="识别结果可在此选择、复制"></textarea>
+    </aside>
   </div>
 
+  <div id="tagOverlay" class="overlay hidden">
+    <div id="tagModal" class="modal">
+      <div class="modal-header">
+        <h2>管理标签</h2>
+        <button id="tagClose" class="modal-close" type="button" title="关闭" aria-label="关闭">
+          <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.2 2.2l7.6 7.6M9.8 2.2L2.2 9.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div id="tagAdd">
+          <input id="tagInput" placeholder="新标签名称" maxlength="12" />
+          <button id="tagAddBtn" class="primary">新增</button>
+        </div>
+        <div id="tagList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="confirmOverlay" class="overlay hidden">
+    <div class="modal confirm-modal">
+      <h2 class="confirm-title">确认操作</h2>
+      <p id="confirmText" class="confirm-text"></p>
+      <div class="confirm-actions">
+        <button id="confirmCancel">取消</button>
+        <button id="confirmOk" class="danger">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="clipQuickBar" class="clip-quick-bar hidden" role="status" aria-live="polite">
+    <div class="clip-quick-main">
+      <img id="clipQuickThumb" class="clip-quick-thumb" alt="" hidden>
+      <span id="clipQuickText" class="clip-quick-text">剪贴板有新内容</span>
+      <div class="clip-quick-actions">
+        <button type="button" id="clipQuickApply" class="clip-quick-apply">填入新建</button>
+        <button type="button" id="clipQuickDismiss" class="clip-quick-dismiss" title="忽略" aria-label="忽略">
+          <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.2 2.2l7.6 7.6M9.8 2.2L2.2 9.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </div>
+    <div id="clipQuickCountdown" class="clip-quick-progress" hidden aria-hidden="true">
+      <div id="clipQuickProgressFill" class="clip-quick-progress-fill"></div>
+    </div>
+  </div>
+
+  <script src="taskMedia.js"></script>
   <script src="api.js"></script>
+  <script src="themeColor.js"></script>
+  <script src="skins.js"></script>
+  <script src="videoPoster.js"></script>
   <script src="ui.js"></script>
+  <script src="modalDrag.js"></script>
+  <script src="search.js"></script>
+  <script src="dropFiles.js"></script>
+  <script src="pasteContent.js"></script>
+  <script src="state.js"></script>
+  <script src="viewDefaults.js"></script>
+  <script src="dom.js"></script>
+  <script src="lightbox.js"></script>
+  <script src="filters.js"></script>
+  <script src="create.js"></script>
+  <script src="clipboardQuick.js"></script>
+  <script src="detail.js"></script>
+  <script src="tags-ui.js"></script>
+  <script src="settings.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

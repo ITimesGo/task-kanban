@@ -1,14 +1,19 @@
 appId: com.local.taskkanban
-productName: 简易任务看板
+productName: 任务看板
 directories:
   output: dist
 files:
   - src/**
   - assets/**
+  - package.json
+asarUnpack:
+  - node_modules/tesseract.js/**/*
+  - node_modules/tesseract.js-core/**/*
 win:
   target:
     - portable
   icon: assets/icon.png
   signAndEditExecutable: false
+afterPack: ./after-pack.js
 portable:
-  artifactName: "简易任务看板-${version}.exe"
+  artifactName: "任务看板-${version}.exe"

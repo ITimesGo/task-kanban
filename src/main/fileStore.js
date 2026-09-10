@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const images = require('./images');
+const videos = require('./videos');
 const mediaLayout = require('./mediaLayout');
 
 class FileStore {
@@ -12,11 +13,13 @@ class FileStore {
     this.appDataDir = appDataDir;
     this.imagesDir = path.join(appDataDir, 'images');
     this.attachmentsDir = path.join(appDataDir, 'attachments');
+    this.videosDir = path.join(appDataDir, 'videos');
     this.tasksFile = path.join(appDataDir, 'tasks.json');
     this.tagsFile = path.join(appDataDir, 'tags.json');
     this.trashFile = path.join(appDataDir, 'trash.json');
     fs.mkdirSync(this.imagesDir, { recursive: true });
     fs.mkdirSync(this.attachmentsDir, { recursive: true });
+    fs.mkdirSync(this.videosDir, { recursive: true });
   }
 
   #mediaSubdir(tags) {
@@ -166,6 +169,25 @@ class FileStore {
     return item;
   }
 
+  copyVideoFromPath(srcPath, taskId, index, opts = {}) {
+    videos.assertVideoFile(srcPath);
+    const ext = videos.extOf(srcPath);
+    const subdir = this.#mediaSubdir(opts.tags);
+    this.#ensureKindSubdir('videos', subdir);
+    const filename = `${taskId}_${index}.${ext}`;
+    const rel = mediaLayout.relFor('videos', subdir, filename);
+    fs.copyFileSync(srcPath, path.join(this.appDataDir, rel));
+    return rel;
+  }
+
+  ingestVideo(item, taskId, index, opts = {}) {
+    if (item && typeof item === 'object' && item.srcPath) {
+      return this.copyVideoFromPath(item.srcPath, taskId, index, opts);
+    }
+    if (typeof item === 'string' && item.startsWith('videos/')) return item;
+    return item;
+  }
+
   readImageDataUrl(rel) {
     const abs = path.join(this.appDataDir, rel);
     if (!fs.existsSync(abs)) return null;
@@ -175,6 +197,12 @@ class FileStore {
   }
 
   deleteImages(rels) {
+    for (const rel of rels || []) {
+      try { fs.unlinkSync(path.join(this.appDataDir, rel)); } catch (_) {}
+    }
+  }
+
+  deleteVideos(rels) {
     for (const rel of rels || []) {
       try { fs.unlinkSync(path.join(this.appDataDir, rel)); } catch (_) {}
     }
@@ -210,14 +238,31 @@ class FileStore {
         return rel;
       }
     };
-    const imgs = (task.images || []).map((r) => moveOne(r, 'images'));
+    const relCache = new Map();
+    const moveCached = (rel, kind) => {
+      const key = `${kind}\0${String(rel || '')}`;
+      if (relCache.has(key)) return relCache.get(key);
+      const next = moveOne(rel, kind);
+      relCache.set(key, next);
+      return next;
+    };
+    const imgs = (task.images || []).map((r) => moveCached(r, 'images'));
+    const vids = (task.videos || []).map((r) => moveCached(r, 'videos'));
     const attachments = (task.attachments || []).map((a) => {
-      if (typeof a === 'string') return moveOne(a, 'attachments');
+      if (typeof a === 'string') return moveCached(a, 'attachments');
       if (!a || !a.rel) return a;
-      const newRel = moveOne(a.rel, 'attachments');
+      const newRel = moveCached(a.rel, 'attachments');
       return { ...a, rel: newRel, name: path.basename(newRel) };
     });
-    return { ...task, images: imgs, attachments };
+    const next = { ...task, images: imgs, videos: vids, attachments };
+    if (Array.isArray(task.media)) {
+      next.media = task.media.map((m) => {
+        if (!m || !m.rel) return m;
+        const folder = m.kind === 'video' ? 'videos' : 'images';
+        return { ...m, rel: moveCached(m.rel, folder) };
+      });
+    }
+    return next;
   }
 
   #rmEmptyDirs(kind) {
@@ -239,6 +284,7 @@ class FileStore {
   rmEmptyMediaDirs() {
     this.#rmEmptyDirs('images');
     this.#rmEmptyDirs('attachments');
+    this.#rmEmptyDirs('videos');
   }
 
   migrateMediaLayout() {
@@ -248,7 +294,9 @@ class FileStore {
     const mapList = (list) => list.map((t) => {
       const next = this.moveMediaForTask(t, tagList);
       if (JSON.stringify(next.images) !== JSON.stringify(t.images)
-        || JSON.stringify(next.attachments) !== JSON.stringify(t.attachments)) moved++;
+        || JSON.stringify(next.videos || []) !== JSON.stringify(t.videos || [])
+        || JSON.stringify(next.attachments) !== JSON.stringify(t.attachments)
+        || JSON.stringify(next.media || []) !== JSON.stringify(t.media || [])) moved++;
       return next;
     });
     this.saveTasks(mapList(this.loadTasks()));
@@ -317,6 +365,7 @@ class FileStore {
     try {
       applyKind('images');
       applyKind('attachments');
+      applyKind('videos');
     } catch (err) {
       for (let i = undos.length - 1; i >= 0; i--) {
         try { undos[i](); } catch (_) {}
@@ -330,24 +379,33 @@ class FileStore {
       if (relMap.has(norm)) return relMap.get(norm);
       const prefixImg = `images/${oldSub}/`;
       const prefixAtt = `attachments/${oldSub}/`;
+      const prefixVid = `videos/${oldSub}/`;
       if (norm.startsWith(prefixImg)) {
         return mediaLayout.relFor('images', newSub, path.basename(norm));
       }
       if (norm.startsWith(prefixAtt)) {
         return mediaLayout.relFor('attachments', newSub, path.basename(norm));
       }
+      if (norm.startsWith(prefixVid)) {
+        return mediaLayout.relFor('videos', newSub, path.basename(norm));
+      }
       return rel;
     };
 
     const rewriteTask = (t) => {
       const images = (t.images || []).map(rewriteRel);
+      const videos = (t.videos || []).map(rewriteRel);
       const attachments = (t.attachments || []).map((a) => {
         if (typeof a === 'string') return rewriteRel(a);
         if (!a || !a.rel) return a;
         const newRel = rewriteRel(a.rel);
         return { ...a, rel: newRel, name: path.basename(newRel) };
       });
-      return { ...t, images, attachments };
+      const next = { ...t, images, videos, attachments };
+      if (Array.isArray(t.media)) {
+        next.media = t.media.map((m) => (m && m.rel ? { ...m, rel: rewriteRel(m.rel) } : m));
+      }
+      return next;
     };
 
     this.saveTasks(this.loadTasks().map(rewriteTask));
