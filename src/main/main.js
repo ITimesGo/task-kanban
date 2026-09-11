@@ -684,8 +684,10 @@ function setupSettingsHandlers() {
 
     const updatesDir = path.join(app.getPath('userData'), 'updates');
     try { fs.mkdirSync(updatesDir, { recursive: true }); } catch (_) { /* ignore */ }
-    const destDir = canHandoff ? updatesDir : app.getPath('downloads');
-    const dest = uniqueDest(destDir, canHandoff ? `task-kanban-${app.getVersion()}-to-update.exe` : fileName);
+    // 固定文件名覆盖下载，避免 updates 里堆出 to-update (1)(2)(3)
+    const dest = canHandoff
+      ? path.join(updatesDir, 'pending-update.exe')
+      : uniqueDest(app.getPath('downloads'), fileName);
 
     async function downloadTo(destPath) {
       const res = await net.fetch(u, { method: 'GET' });
@@ -956,11 +958,34 @@ app.whenReady().then(() => {
   setupPluginHandlers();
   // 若刚从旧版切换过来：后台把新包覆盖回用户原来的 exe 路径
   schedulePortableHandoffReplace();
+  // 清理 updates 目录里历史残留包
+  cleanupStagedUpdates();
   // 注册 F12 切换 DevTools（removeMenu 后默认快捷键会失效，故用全局快捷键）
   globalShortcut.register('F12', () => { win.webContents.toggleDevTools(); });
   globalShortcut.register('Ctrl+Shift+I', () => { win.webContents.toggleDevTools(); });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
+
+/** 删除 updates 里不再需要的临时包（保留当前正在运行的那个） */
+function cleanupStagedUpdates() {
+  if (!app.isPackaged) return;
+  const updatesDir = path.join(app.getPath('userData'), 'updates');
+  let names;
+  try { names = fs.readdirSync(updatesDir); } catch (_) { return; }
+  const running = String(process.env.PORTABLE_EXECUTABLE_FILE || '').toLowerCase();
+  const handoff = readHandoff(app.getPath('userData'));
+  const keep = new Set();
+  if (running) keep.add(running);
+  if (handoff && handoff.newExe) keep.add(String(handoff.newExe).toLowerCase());
+  for (const name of names) {
+    if (!/\.exe$/i.test(name)) continue;
+    const full = path.join(updatesDir, name);
+    if (keep.has(full.toLowerCase())) continue;
+    // 有未完成 handoff 时，不要删 pending-update.exe
+    if (handoff && /^pending-update\.exe$/i.test(name)) continue;
+    try { fs.unlinkSync(full); } catch (_) { /* 可能仍被占用 */ }
+  }
+}
 
 /** 新版本启动后：把 updates 里的新 portable 复制到用户原来的桌面/快捷方式文件 */
 function schedulePortableHandoffReplace() {
@@ -968,11 +993,13 @@ function schedulePortableHandoffReplace() {
   const handoff = readHandoff(app.getPath('userData'));
   if (!handoff || !handoff.replaceTarget) return;
 
-  const src =
-    process.env.PORTABLE_EXECUTABLE_FILE ||
-    handoff.newExe ||
-    '';
   const dst = String(handoff.replaceTarget || '');
+  const staged = String(handoff.newExe || '');
+  const running = String(process.env.PORTABLE_EXECUTABLE_FILE || '');
+  // 必须优先用下载下来的新包；若误用当前正在运行的桌面旧路径，会 src===dst 被跳过，旧文件永远不变
+  let src = '';
+  if (staged && fs.existsSync(staged)) src = staged;
+  else if (running && fs.existsSync(running)) src = running;
   if (!src || !dst) return;
 
   const logFile = path.join(app.getPath('userData'), 'update-handoff.log');
@@ -981,18 +1008,33 @@ function schedulePortableHandoffReplace() {
       fs.appendFileSync(logFile, `${new Date().toISOString()} ${m}\n`, 'utf8');
     } catch (_) { /* ignore */ }
   };
-  log(`begin copy ${src} -> ${dst}`);
+  log(`begin copy ${src} -> ${dst} (staged=${staged || '-'} running=${running || '-'})`);
 
   let tries = 0;
   const tick = () => {
     tries += 1;
     const res = copyPortableOverTarget(src, dst);
-    if (res.ok) {
-      log(`ok tries=${tries} bytes=${res.bytes || 0} skipped=${!!res.skipped}`);
+    if (res.ok && !res.skipped) {
+      log(`ok tries=${tries} bytes=${res.bytes || 0}`);
       clearHandoff(app.getPath('userData'));
+      // 若当前不是从 staged 路径运行，可尝试删掉临时包
+      try {
+        if (staged && path.resolve(staged).toLowerCase() !== path.resolve(running).toLowerCase()) {
+          fs.unlinkSync(staged);
+          log(`removed staged ${staged}`);
+        }
+      } catch (_) { /* 占用中则留给 cleanupStagedUpdates */ }
+      cleanupStagedUpdates();
       return;
     }
-    log(`fail try=${tries} ${res.error || ''}`);
+    if (res.skipped) {
+      log(`skip same-path try=${tries}; keep handoff`);
+      if (staged && fs.existsSync(staged) && path.resolve(staged).toLowerCase() !== path.resolve(dst).toLowerCase()) {
+        src = staged;
+      }
+    } else {
+      log(`fail try=${tries} ${res.error || ''}`);
+    }
     if (tries < 60) setTimeout(tick, 500);
     else log('give up');
   };
