@@ -24,7 +24,7 @@ const mediaLayout = require('./mediaLayout');
 const ocr = require('./ocr');
 const plugins = require('./plugins');
 const { normalizeMediaPayload } = require('../renderer/taskMedia');
-const { UPDATE_FEED_URL, evaluateUpdate, buildApplyUpdateScript, resolveUpdateTargetPath, isExtractedTempPath } = require('./appUpdate');
+const { UPDATE_FEED_URL, evaluateUpdate, buildHandoffScript, resolveUpdateTargetPath, isExtractedTempPath, writeHandoff, readHandoff, clearHandoff, copyPortableOverTarget } = require('./appUpdate');
 
 // 自定义协议：taskimage://local/images/xxx.png -> 磁盘文件
 // 注意：scheme 注册为 standard，taskimage:// 后第一段是 host，故 URL 形如 taskimage://local/<rel>
@@ -630,8 +630,8 @@ function setupSettingsHandlers() {
   });
 
   /**
-   * 下载新版 exe 后：退出当前进程，由外部脚本覆盖用户真正的 portable 文件并重新启动。
-   * portable 启动器（NSIS）会 ExecWait 子进程并锁住用户双击的 exe，必须等启动器退出后再覆盖。
+   * 下载新版到 userData/updates，退出旧进程后【启动新 exe】（不先覆盖旧路径）。
+   * 新进程启动后再把新包复制回用户原来的桌面/快捷方式路径，避免再点旧图标还是旧版。
    */
   ipcHandle('update:download', async (_e, url) => {
     const u = String(url || '').trim();
@@ -660,8 +660,7 @@ function setupSettingsHandlers() {
       }
     };
 
-    /** 仅当能定位到用户真正的 portable 文件（非临时解压目录）时才自动替换 */
-    const canApply = app.isPackaged && hasPortableEnv && targetPath && !targetIsTemp && canWriteDir(path.dirname(targetPath));
+    const canHandoff = app.isPackaged && hasPortableEnv && targetPath && !targetIsTemp && canWriteDir(path.dirname(targetPath));
 
     const uniqueDest = (dir, name) => {
       let dest = path.join(dir, name);
@@ -683,8 +682,10 @@ function setupSettingsHandlers() {
     } catch (_) { /* keep default */ }
     if (!/\.exe$/i.test(fileName)) fileName = `${fileName || 'task-kanban-update'}.exe`;
 
-    const destDir = canApply ? os.tmpdir() : app.getPath('downloads');
-    const dest = uniqueDest(destDir, canApply ? `kanban-update-${Date.now()}.exe` : fileName);
+    const updatesDir = path.join(app.getPath('userData'), 'updates');
+    try { fs.mkdirSync(updatesDir, { recursive: true }); } catch (_) { /* ignore */ }
+    const destDir = canHandoff ? updatesDir : app.getPath('downloads');
+    const dest = uniqueDest(destDir, canHandoff ? `task-kanban-${app.getVersion()}-to-update.exe` : fileName);
 
     async function downloadTo(destPath) {
       const res = await net.fetch(u, { method: 'GET' });
@@ -731,13 +732,13 @@ function setupSettingsHandlers() {
       return { ok: false, error: (err && err.message) || '下载失败' };
     }
 
-    if (!canApply) {
+    if (!canHandoff) {
       try { shell.showItemInFolder(dest); } catch (_) { /* ignore */ }
       let why;
       if (!app.isPackaged) {
-        why = '开发模式不支持自动替换；已下载到「下载」文件夹。请用正式打包的 portable 版升级。';
+        why = '开发模式不支持自动切换；已下载到「下载」文件夹。请用正式打包的 portable 版升级。';
       } else if (!hasPortableEnv || targetIsTemp) {
-        why = `无法定位你双击的那个程序文件（当前运行在临时解压目录）。已下载到：${dest}。请完全退出后，用这个新文件替换原来的 exe。`;
+        why = `无法定位你双击的那个程序文件。已下载到：${dest}。请完全退出后，用这个新文件替换原来的 exe。`;
       } else {
         why = `无法写入程序目录（${path.dirname(targetPath)}），已下载到：${dest}。请退出后手动替换。`;
       }
@@ -759,19 +760,23 @@ function setupSettingsHandlers() {
     };
 
     try {
+      writeHandoff(app.getPath('userData'), {
+        replaceTarget: targetPath,
+        newExe: dest,
+        fromVersion: app.getVersion(),
+        createdAt: new Date().toISOString(),
+      });
+
       const parentPid = getParentPid(process.pid);
-      const logPath = path.join(os.tmpdir(), `kanban-update-${Date.now()}.log`);
-      const scriptPath = path.join(os.tmpdir(), `kanban-apply-${Date.now()}.ps1`);
-      const script = buildApplyUpdateScript({
+      const logPath = path.join(os.tmpdir(), `kanban-handoff-${Date.now()}.log`);
+      const scriptPath = path.join(os.tmpdir(), `kanban-handoff-${Date.now()}.ps1`);
+      const script = buildHandoffScript({
         pid: process.pid,
         parentPid,
-        sourcePath: dest,
-        targetPath,
+        newExePath: dest,
         logPath,
-        fallbackDir: app.getPath('downloads'),
       });
-      // UTF-8 BOM，避免部分环境下脚本自身编码异常
-      fs.writeFileSync(scriptPath, `\uFEFF${script}`, 'utf8');
+      fs.writeFileSync(scriptPath, '\uFEFF' + script, 'utf8');
       const child = spawn(
         'powershell.exe',
         ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', scriptPath],
@@ -780,8 +785,8 @@ function setupSettingsHandlers() {
       child.unref();
       setTimeout(() => {
         try { app.quit(); } catch (_) { /* ignore */ }
-      }, 500);
-      return { ok: true, applied: true, path: dest, targetPath, logPath, parentPid };
+      }, 400);
+      return { ok: true, applied: true, path: dest, targetPath, logPath };
     } catch (err) {
       try { shell.showItemInFolder(dest); } catch (_) { /* ignore */ }
       return {
@@ -789,7 +794,7 @@ function setupSettingsHandlers() {
         applied: false,
         path: dest,
         targetPath,
-        message: `自动替换失败：${(err && err.message) || '未知错误'}。文件已保留，请退出后手动替换：${dest}`,
+        message: `无法自动打开新版本：${(err && err.message) || '未知错误'}。请退出后运行：${dest}`,
       };
     }
   });
@@ -949,12 +954,50 @@ app.whenReady().then(() => {
   setupWindowHandlers();
   setupOcrHandlers();
   setupPluginHandlers();
+  // 若刚从旧版切换过来：后台把新包覆盖回用户原来的 exe 路径
+  schedulePortableHandoffReplace();
   // 注册 F12 切换 DevTools（removeMenu 后默认快捷键会失效，故用全局快捷键）
   globalShortcut.register('F12', () => { win.webContents.toggleDevTools(); });
   globalShortcut.register('Ctrl+Shift+I', () => { win.webContents.toggleDevTools(); });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
+/** 新版本启动后：把 updates 里的新 portable 复制到用户原来的桌面/快捷方式文件 */
+function schedulePortableHandoffReplace() {
+  if (!app.isPackaged) return;
+  const handoff = readHandoff(app.getPath('userData'));
+  if (!handoff || !handoff.replaceTarget) return;
+
+  const src =
+    process.env.PORTABLE_EXECUTABLE_FILE ||
+    handoff.newExe ||
+    '';
+  const dst = String(handoff.replaceTarget || '');
+  if (!src || !dst) return;
+
+  const logFile = path.join(app.getPath('userData'), 'update-handoff.log');
+  const log = (m) => {
+    try {
+      fs.appendFileSync(logFile, `${new Date().toISOString()} ${m}\n`, 'utf8');
+    } catch (_) { /* ignore */ }
+  };
+  log(`begin copy ${src} -> ${dst}`);
+
+  let tries = 0;
+  const tick = () => {
+    tries += 1;
+    const res = copyPortableOverTarget(src, dst);
+    if (res.ok) {
+      log(`ok tries=${tries} bytes=${res.bytes || 0} skipped=${!!res.skipped}`);
+      clearHandoff(app.getPath('userData'));
+      return;
+    }
+    log(`fail try=${tries} ${res.error || ''}`);
+    if (tries < 60) setTimeout(tick, 500);
+    else log('give up');
+  };
+  setTimeout(tick, 1500);
+}
 function setupSingleInstanceGuard() {
   app.on('second-instance', () => {
     if (win) {

@@ -1,10 +1,14 @@
 /** 应用检查更新：版本比较与 feed 判定（纯逻辑，便于单测） */
 
 const path = require('path');
+const fs = require('fs');
 
 /** 发版时更新仓库中的 docs/kanban-latest.json（version / notes / url） */
 const UPDATE_FEED_URL =
   'https://raw.githubusercontent.com/ITimesGo/task-kanban/main/docs/kanban-latest.json';
+
+const HANDOFF_FILE = 'update-handoff.json';
+const SELF_UPDATE_FLAG = '--kanban-self-update';
 
 function parseVersion(raw) {
   const s = String(raw == null ? '' : raw).trim().replace(/^v/i, '');
@@ -58,11 +62,6 @@ function evaluateUpdate(localVersion, feed) {
   return { status: 'latest', current, latest };
 }
 
-/** PowerShell 单引号字面量（路径含空格/中文） */
-function psSingleQuote(s) {
-  return `'${String(s).replace(/'/g, "''")}'`;
-}
-
 function toBase64Utf8(s) {
   return Buffer.from(String(s), 'utf8').toString('base64');
 }
@@ -92,120 +91,111 @@ function isExtractedTempPath(filePath, tmpDir = require('os').tmpdir()) {
   if (tmp && p.startsWith(tmp + '\\')) return true;
   if (p.includes('\\temp\\') || p.includes('\\tmp\\')) return true;
   if (p.includes('\\appdata\\local\\temp\\')) return true;
-  // electron-builder portable 默认解到 %TEMP%\<uuid>\ 或 $PLUGINSDIR
   if (p.includes('\\pluginsdir\\')) return true;
   return false;
 }
 
+function handoffPath(userDataDir) {
+  return path.join(String(userDataDir || ''), HANDOFF_FILE);
+}
+
+function writeHandoff(userDataDir, payload) {
+  const dir = String(userDataDir || '');
+  if (!dir) throw new Error('userDataDir required');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = handoffPath(dir);
+  fs.writeFileSync(file, JSON.stringify(payload, null, 2), 'utf8');
+  return file;
+}
+
+function readHandoff(userDataDir) {
+  try {
+    const raw = fs.readFileSync(handoffPath(userDataDir), 'utf8');
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') return null;
+    return data;
+  } catch (_) {
+    return null;
+  }
+}
+
+function clearHandoff(userDataDir) {
+  try { fs.unlinkSync(handoffPath(userDataDir)); } catch (_) { /* ignore */ }
+}
+
 /**
- * 生成替换脚本。路径用 Base64 传入，避免 ps1 文件编码把中文路径弄坏。
- * 下载包放在临时目录；成功则覆盖用户原来的 exe 并删临时包；失败则挪到「下载」文件夹，避免桌面留下 kanban-update-*.exe。
+ * 旧进程退出后，直接启动「新下载的 exe」（不要先覆盖旧文件再启动旧路径）。
+ * 覆盖桌面上的旧文件改由新进程启动后在后台完成。
  */
-function buildApplyUpdateScript({
-  pid,
-  parentPid = 0,
-  sourcePath,
-  targetPath,
-  logPath = '',
-  fallbackDir = '',
-} = {}) {
+function buildHandoffScript({ pid, parentPid = 0, newExePath, logPath = '' } = {}) {
   const pidNum = Number(pid);
   if (!Number.isFinite(pidNum) || pidNum <= 0) {
     throw new Error('invalid pid');
   }
   const parentNum = Number(parentPid);
   const waitParent = Number.isFinite(parentNum) && parentNum > 0 && parentNum !== pidNum;
-  const srcB64 = toBase64Utf8(sourcePath);
-  const dstB64 = toBase64Utf8(targetPath);
+  const newB64 = toBase64Utf8(newExePath);
   const logB64 = logPath ? toBase64Utf8(logPath) : '';
-  const fallbackB64 = fallbackDir ? toBase64Utf8(fallbackDir) : '';
 
   return [
     "$ErrorActionPreference = 'Continue'",
     `function Decode-B64([string]$b) { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b)) }`,
-    `$src = Decode-B64 '${srcB64}'`,
-    `$dst = Decode-B64 '${dstB64}'`,
+    `$newExe = Decode-B64 '${newB64}'`,
     logB64
       ? `$log = Decode-B64 '${logB64}'`
-      : `$log = Join-Path $env:TEMP ('kanban-update-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss') + '.log')`,
-    fallbackB64
-      ? `$fallbackDir = Decode-B64 '${fallbackB64}'`
-      : `$fallbackDir = [Environment]::GetFolderPath('UserProfile') + '\\Downloads'`,
+      : `$log = Join-Path $env:TEMP ('kanban-handoff-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss') + '.log')`,
     `function Log([string]$m) { try { Add-Content -LiteralPath $log -Value ((Get-Date -Format o) + ' ' + $m) -Encoding UTF8 } catch {} }`,
-    `Log ('start src=' + $src)`,
-    `Log ('start dst=' + $dst)`,
+    `Log ('handoff newExe=' + $newExe)`,
     `$pids = @(${pidNum}${waitParent ? `,${parentNum}` : ''})`,
     `Log ('wait pids=' + ($pids -join ','))`,
     'foreach ($p in $pids) {',
     '  while (Get-Process -Id $p -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 400 }',
     '}',
-    'Start-Sleep -Milliseconds 1000',
-    'function Test-ExclusiveWrite([string]$path) {',
-    '  try {',
-    "    $fs = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)",
-    '    $fs.Close()',
-    '    return $true',
-    '  } catch { return $false }',
-    '}',
-    '$ready = $false',
-    'for ($i = 1; $i -le 120; $i++) {',
-    '  if (-not (Test-Path -LiteralPath $dst)) { $ready = $true; break }',
-    '  if (Test-ExclusiveWrite $dst) { $ready = $true; break }',
-    '  Start-Sleep -Milliseconds 500',
-    '}',
-    'if (-not $ready) { Log "target still locked"; throw "target still locked" }',
-    'Log "target unlocked"',
-    '$srcLen = (Get-Item -LiteralPath $src).Length',
-    '$copied = $false',
-    'for ($i = 1; $i -le 50; $i++) {',
-    '  try {',
-    '    if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Force -ErrorAction Stop }',
-    '    Move-Item -LiteralPath $src -Destination $dst -Force -ErrorAction Stop',
-    '    $dstLen = (Get-Item -LiteralPath $dst).Length',
-    '    if ($dstLen -ne $srcLen) { throw "size mismatch" }',
-    '    $copied = $true',
-    '    Log ("replaced ok size=" + $dstLen)',
-    '    break',
-    '  } catch {',
-    '    Log ("replace try " + $i + " fail: " + $_.Exception.Message)',
-    '    try {',
-    '      Copy-Item -LiteralPath $src -Destination $dst -Force -ErrorAction Stop',
-    '      $dstLen = (Get-Item -LiteralPath $dst).Length',
-    '      if ($dstLen -ne $srcLen) { throw "size mismatch" }',
-    '      Remove-Item -LiteralPath $src -Force -ErrorAction SilentlyContinue',
-    '      $copied = $true',
-    '      Log ("copied ok size=" + $dstLen)',
-    '      break',
-    '    } catch {',
-    '      Log ("copy try " + $i + " fail: " + $_.Exception.Message)',
-    '      Start-Sleep -Milliseconds 500',
-    '    }',
-    '  }',
-    '}',
-    'if (-not $copied) {',
-    '  try {',
-    '    if (-not (Test-Path -LiteralPath $fallbackDir)) { New-Item -ItemType Directory -Path $fallbackDir -Force | Out-Null }',
-    "    $fb = Join-Path $fallbackDir ('task-kanban-update-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss') + '.exe')",
-    '    Move-Item -LiteralPath $src -Destination $fb -Force',
-    '    Log ("fallback moved to " + $fb)',
-    '  } catch { Log ("fallback move fail: " + $_.Exception.Message) }',
-    '  throw "failed to replace executable"',
-    '}',
-    'if (Test-Path -LiteralPath $src) { Remove-Item -LiteralPath $src -Force -ErrorAction SilentlyContinue }',
-    'Start-Process -FilePath $dst',
-    'Log "started"',
+    'Start-Sleep -Milliseconds 1200',
+    'if (-not (Test-Path -LiteralPath $newExe)) { Log "new exe missing"; throw "new exe missing" }',
+    'Start-Process -FilePath $newExe',
+    'Log "started new exe"',
     'Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue',
   ].join('\r\n');
 }
 
+/**
+ * 把当前正在运行的新 portable 包复制到用户原来的快捷方式/桌面路径。
+ * 此时锁的是 updates 里的新包，桌面上的旧路径通常已可写。
+ */
+function copyPortableOverTarget(sourcePath, targetPath) {
+  const src = String(sourcePath || '');
+  const dst = String(targetPath || '');
+  if (!src || !dst) return { ok: false, error: 'missing path' };
+  if (path.resolve(src).toLowerCase() === path.resolve(dst).toLowerCase()) {
+    return { ok: true, skipped: true };
+  }
+  if (!fs.existsSync(src)) return { ok: false, error: 'source missing' };
+  try {
+    fs.copyFileSync(src, dst);
+    const a = fs.statSync(src).size;
+    const b = fs.statSync(dst).size;
+    if (a !== b) return { ok: false, error: `size mismatch ${a} vs ${b}` };
+    return { ok: true, bytes: a };
+  } catch (err) {
+    return { ok: false, error: (err && err.message) || String(err) };
+  }
+}
+
 module.exports = {
   UPDATE_FEED_URL,
+  HANDOFF_FILE,
+  SELF_UPDATE_FLAG,
   parseVersion,
   compareVersions,
   evaluateUpdate,
-  psSingleQuote,
   toBase64Utf8,
   resolveUpdateTargetPath,
   isExtractedTempPath,
-  buildApplyUpdateScript,
+  handoffPath,
+  writeHandoff,
+  readHandoff,
+  clearHandoff,
+  buildHandoffScript,
+  copyPortableOverTarget,
 };
