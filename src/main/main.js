@@ -989,7 +989,7 @@ function cleanupStagedUpdates() {
   }
 }
 
-/** 新版本启动后：若上次更新未完成，用外部脚本覆盖（不能在本进程覆盖自己正在运行的 exe） */
+/** 启动时处理未完成更新：绝不能在「正从桌面 exe 运行」时强制 quit（会闪退循环） */
 function schedulePortableHandoffReplace() {
   if (!app.isPackaged) return;
   const userData = app.getPath('userData');
@@ -1012,40 +1012,19 @@ function schedulePortableHandoffReplace() {
 
   const same = (a, b) => path.resolve(a || '').toLowerCase() === path.resolve(b || '').toLowerCase();
 
-  // 已从目标路径启动且临时包还在：说明上次外部替换可能没跑完，再交给外部脚本
+  // 已从目标路径（桌面图标）启动：不能覆盖自己，也不能自动 quit，否则会闪退循环
   if (same(running, dst)) {
-    log(`resume external replace (running===dst) staged=${staged}`);
+    log('running from target; keep app open, clear handoff to avoid quit-loop');
+    clearHandoff(userData);
     try {
-      const parentPid = (() => {
-        try {
-          const out = require('child_process').execFileSync(
-            'powershell.exe',
-            ['-NoProfile', '-Command', `(Get-CimInstance Win32_Process -Filter "ProcessId=${process.pid}").ParentProcessId`],
-            { encoding: 'utf8', windowsHide: true, timeout: 8000 }
-          );
-          const n = parseInt(String(out).trim(), 10);
-          return Number.isFinite(n) && n > 0 ? n : 0;
-        } catch (_) { return 0; }
-      })();
-      const scriptPath = path.join(os.tmpdir(), `kanban-replace-resume-${Date.now()}.ps1`);
-      const script = buildReplaceAndLaunchScript({
-        pid: process.pid,
-        parentPid,
-        newExePath: staged,
-        targetPath: dst,
-        logPath: logFile,
-        handoffJsonPath: handoffPath(userData),
-      });
-      fs.writeFileSync(scriptPath, '\uFEFF' + script, 'utf8');
-      spawn(
-        'powershell.exe',
-        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', scriptPath],
-        { detached: true, stdio: 'ignore', windowsHide: true }
-      ).unref();
-      setTimeout(() => { try { app.quit(); } catch (_) { /* ignore */ } }, 600);
-    } catch (err) {
-      log(`resume spawn fail: ${(err && err.message) || err}`);
-    }
+      dialog.showMessageBox(win || null, {
+        type: 'warning',
+        title: '更新未完成',
+        message: '检测到上次更新未完成。请到设置 → 关于再次点「立即更新」，或手动用新版 exe 替换桌面程序。',
+        detail: `临时包仍在：\n${staged}`,
+        buttons: ['知道了'],
+      }).catch(() => {});
+    } catch (_) { /* ignore */ }
     return;
   }
 
@@ -1063,7 +1042,10 @@ function schedulePortableHandoffReplace() {
     }
     log(`fail try=${tries} ${res.error || (res.skipped ? 'skipped' : '')}`);
     if (tries < 40) setTimeout(tick, 500);
-    else log('give up in-process');
+    else {
+      log('give up in-process; clear handoff');
+      clearHandoff(userData);
+    }
   };
   setTimeout(tick, 1000);
 }
