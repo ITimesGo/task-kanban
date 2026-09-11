@@ -1,7 +1,7 @@
 {
   "name": "task-kanban",
   "productName": "任务看板",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "任务看板（桌面版）",
   "main": "src/main/main.js",
   "scripts": {
