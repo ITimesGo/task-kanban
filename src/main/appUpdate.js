@@ -124,10 +124,17 @@ function clearHandoff(userDataDir) {
 }
 
 /**
- * 旧进程退出后，直接启动「新下载的 exe」（不要先覆盖旧文件再启动旧路径）。
- * 覆盖桌面上的旧文件改由新进程启动后在后台完成。
+ * 旧进程退出后，在外部脚本里：复制新包 → 覆盖用户原来的 exe → 启动原路径。
+ * 绝不能在「正从原路径运行」的进程里 copy 覆盖自己（会 EBUSY）。
  */
-function buildHandoffScript({ pid, parentPid = 0, newExePath, logPath = '' } = {}) {
+function buildReplaceAndLaunchScript({
+  pid,
+  parentPid = 0,
+  newExePath,
+  targetPath,
+  logPath = '',
+  handoffJsonPath = '',
+} = {}) {
   const pidNum = Number(pid);
   if (!Number.isFinite(pidNum) || pidNum <= 0) {
     throw new Error('invalid pid');
@@ -135,33 +142,79 @@ function buildHandoffScript({ pid, parentPid = 0, newExePath, logPath = '' } = {
   const parentNum = Number(parentPid);
   const waitParent = Number.isFinite(parentNum) && parentNum > 0 && parentNum !== pidNum;
   const newB64 = toBase64Utf8(newExePath);
+  const dstB64 = toBase64Utf8(targetPath);
   const logB64 = logPath ? toBase64Utf8(logPath) : '';
+  const hoB64 = handoffJsonPath ? toBase64Utf8(handoffJsonPath) : '';
 
   return [
     "$ErrorActionPreference = 'Continue'",
     `function Decode-B64([string]$b) { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b)) }`,
     `$newExe = Decode-B64 '${newB64}'`,
+    `$dst = Decode-B64 '${dstB64}'`,
     logB64
       ? `$log = Decode-B64 '${logB64}'`
-      : `$log = Join-Path $env:TEMP ('kanban-handoff-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss') + '.log')`,
+      : `$log = Join-Path $env:TEMP ('kanban-replace-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss') + '.log')`,
+    hoB64 ? `$handoff = Decode-B64 '${hoB64}'` : `$handoff = ''`,
     `function Log([string]$m) { try { Add-Content -LiteralPath $log -Value ((Get-Date -Format o) + ' ' + $m) -Encoding UTF8 } catch {} }`,
-    `Log ('handoff newExe=' + $newExe)`,
+    `Log ('replace newExe=' + $newExe)`,
+    `Log ('replace dst=' + $dst)`,
     `$pids = @(${pidNum}${waitParent ? `,${parentNum}` : ''})`,
     `Log ('wait pids=' + ($pids -join ','))`,
     'foreach ($p in $pids) {',
     '  while (Get-Process -Id $p -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 400 }',
     '}',
-    'Start-Sleep -Milliseconds 1200',
+    'Start-Sleep -Milliseconds 1500',
+    'function Test-ExclusiveWrite([string]$path) {',
+    '  try {',
+    "    if (-not (Test-Path -LiteralPath $path)) { return $true }",
+    "    $fs = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)",
+    '    $fs.Close()',
+    '    return $true',
+    '  } catch { return $false }',
+    '}',
+    '$ready = $false',
+    'for ($i = 1; $i -le 120; $i++) {',
+    '  if (Test-ExclusiveWrite $dst) { $ready = $true; break }',
+    '  Start-Sleep -Milliseconds 500',
+    '}',
+    'if (-not $ready) { Log "dst still locked"; throw "dst still locked" }',
     'if (-not (Test-Path -LiteralPath $newExe)) { Log "new exe missing"; throw "new exe missing" }',
-    'Start-Process -FilePath $newExe',
-    'Log "started new exe"',
+    '$srcLen = (Get-Item -LiteralPath $newExe).Length',
+    '$ok = $false',
+    'for ($i = 1; $i -le 40; $i++) {',
+    '  try {',
+    '    Copy-Item -LiteralPath $newExe -Destination $dst -Force',
+    '    $dstLen = (Get-Item -LiteralPath $dst).Length',
+    '    if ($dstLen -ne $srcLen) { throw "size mismatch" }',
+    '    $ok = $true',
+    '    Log ("copied ok size=" + $dstLen)',
+    '    break',
+    '  } catch {',
+    '    Log ("copy try " + $i + " fail: " + $_.Exception.Message)',
+    '    Start-Sleep -Milliseconds 500',
+    '  }',
+    '}',
+    'if (-not $ok) { throw "copy failed" }',
+    'try { Remove-Item -LiteralPath $newExe -Force -ErrorAction SilentlyContinue } catch {}',
+    'if ($handoff) { try { Remove-Item -LiteralPath $handoff -Force -ErrorAction SilentlyContinue } catch {} }',
+    'Start-Process -FilePath $dst',
+    'Log "started dst"',
     'Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue',
   ].join('\r\n');
 }
 
+/** @deprecated 保留别名，避免旧引用报错 */
+function buildHandoffScript(opts) {
+  return buildReplaceAndLaunchScript({
+    ...opts,
+    targetPath: opts.targetPath || opts.newExePath,
+    newExePath: opts.newExePath,
+  });
+}
+
 /**
  * 把当前正在运行的新 portable 包复制到用户原来的快捷方式/桌面路径。
- * 此时锁的是 updates 里的新包，桌面上的旧路径通常已可写。
+ * 若 source/target 相同，或目标正被本进程占用，不要调用。
  */
 function copyPortableOverTarget(sourcePath, targetPath) {
   const src = String(sourcePath || '');
@@ -196,6 +249,7 @@ module.exports = {
   writeHandoff,
   readHandoff,
   clearHandoff,
+  buildReplaceAndLaunchScript,
   buildHandoffScript,
   copyPortableOverTarget,
 };

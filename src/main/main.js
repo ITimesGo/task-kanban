@@ -24,7 +24,7 @@ const mediaLayout = require('./mediaLayout');
 const ocr = require('./ocr');
 const plugins = require('./plugins');
 const { normalizeMediaPayload } = require('../renderer/taskMedia');
-const { UPDATE_FEED_URL, evaluateUpdate, buildHandoffScript, resolveUpdateTargetPath, isExtractedTempPath, writeHandoff, readHandoff, clearHandoff, copyPortableOverTarget } = require('./appUpdate');
+const { UPDATE_FEED_URL, evaluateUpdate, buildReplaceAndLaunchScript, resolveUpdateTargetPath, isExtractedTempPath, writeHandoff, readHandoff, clearHandoff, copyPortableOverTarget, handoffPath } = require('./appUpdate');
 
 // 自定义协议：taskimage://local/images/xxx.png -> 磁盘文件
 // 注意：scheme 注册为 standard，taskimage:// 后第一段是 host，故 URL 形如 taskimage://local/<rel>
@@ -770,13 +770,15 @@ function setupSettingsHandlers() {
       });
 
       const parentPid = getParentPid(process.pid);
-      const logPath = path.join(os.tmpdir(), `kanban-handoff-${Date.now()}.log`);
-      const scriptPath = path.join(os.tmpdir(), `kanban-handoff-${Date.now()}.ps1`);
-      const script = buildHandoffScript({
+      const logPath = path.join(app.getPath('userData'), 'update-handoff.log');
+      const scriptPath = path.join(os.tmpdir(), `kanban-replace-${Date.now()}.ps1`);
+      const script = buildReplaceAndLaunchScript({
         pid: process.pid,
         parentPid,
         newExePath: dest,
+        targetPath,
         logPath,
+        handoffJsonPath: handoffPath(app.getPath('userData')),
       });
       fs.writeFileSync(scriptPath, '\uFEFF' + script, 'utf8');
       const child = spawn(
@@ -987,58 +989,83 @@ function cleanupStagedUpdates() {
   }
 }
 
-/** 新版本启动后：把 updates 里的新 portable 复制到用户原来的桌面/快捷方式文件 */
+/** 新版本启动后：若上次更新未完成，用外部脚本覆盖（不能在本进程覆盖自己正在运行的 exe） */
 function schedulePortableHandoffReplace() {
   if (!app.isPackaged) return;
-  const handoff = readHandoff(app.getPath('userData'));
+  const userData = app.getPath('userData');
+  const handoff = readHandoff(userData);
   if (!handoff || !handoff.replaceTarget) return;
 
   const dst = String(handoff.replaceTarget || '');
   const staged = String(handoff.newExe || '');
   const running = String(process.env.PORTABLE_EXECUTABLE_FILE || '');
-  // 必须优先用下载下来的新包；若误用当前正在运行的桌面旧路径，会 src===dst 被跳过，旧文件永远不变
-  let src = '';
-  if (staged && fs.existsSync(staged)) src = staged;
-  else if (running && fs.existsSync(running)) src = running;
-  if (!src || !dst) return;
-
-  const logFile = path.join(app.getPath('userData'), 'update-handoff.log');
+  const logFile = path.join(userData, 'update-handoff.log');
   const log = (m) => {
-    try {
-      fs.appendFileSync(logFile, `${new Date().toISOString()} ${m}\n`, 'utf8');
-    } catch (_) { /* ignore */ }
+    try { fs.appendFileSync(logFile, `${new Date().toISOString()} ${m}\n`, 'utf8'); } catch (_) { /* ignore */ }
   };
-  log(`begin copy ${src} -> ${dst} (staged=${staged || '-'} running=${running || '-'})`);
 
+  if (!staged || !fs.existsSync(staged)) {
+    log('handoff staged missing; clear');
+    clearHandoff(userData);
+    return;
+  }
+
+  const same = (a, b) => path.resolve(a || '').toLowerCase() === path.resolve(b || '').toLowerCase();
+
+  // 已从目标路径启动且临时包还在：说明上次外部替换可能没跑完，再交给外部脚本
+  if (same(running, dst)) {
+    log(`resume external replace (running===dst) staged=${staged}`);
+    try {
+      const parentPid = (() => {
+        try {
+          const out = require('child_process').execFileSync(
+            'powershell.exe',
+            ['-NoProfile', '-Command', `(Get-CimInstance Win32_Process -Filter "ProcessId=${process.pid}").ParentProcessId`],
+            { encoding: 'utf8', windowsHide: true, timeout: 8000 }
+          );
+          const n = parseInt(String(out).trim(), 10);
+          return Number.isFinite(n) && n > 0 ? n : 0;
+        } catch (_) { return 0; }
+      })();
+      const scriptPath = path.join(os.tmpdir(), `kanban-replace-resume-${Date.now()}.ps1`);
+      const script = buildReplaceAndLaunchScript({
+        pid: process.pid,
+        parentPid,
+        newExePath: staged,
+        targetPath: dst,
+        logPath: logFile,
+        handoffJsonPath: handoffPath(userData),
+      });
+      fs.writeFileSync(scriptPath, '\uFEFF' + script, 'utf8');
+      spawn(
+        'powershell.exe',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', scriptPath],
+        { detached: true, stdio: 'ignore', windowsHide: true }
+      ).unref();
+      setTimeout(() => { try { app.quit(); } catch (_) { /* ignore */ } }, 600);
+    } catch (err) {
+      log(`resume spawn fail: ${(err && err.message) || err}`);
+    }
+    return;
+  }
+
+  // 从 pending 包启动：目标桌面文件此时通常可写，进程内复制即可
+  log(`in-process copy ${staged} -> ${dst} (running=${running || '-'})`);
   let tries = 0;
   const tick = () => {
     tries += 1;
-    const res = copyPortableOverTarget(src, dst);
+    const res = copyPortableOverTarget(staged, dst);
     if (res.ok && !res.skipped) {
       log(`ok tries=${tries} bytes=${res.bytes || 0}`);
-      clearHandoff(app.getPath('userData'));
-      // 若当前不是从 staged 路径运行，可尝试删掉临时包
-      try {
-        if (staged && path.resolve(staged).toLowerCase() !== path.resolve(running).toLowerCase()) {
-          fs.unlinkSync(staged);
-          log(`removed staged ${staged}`);
-        }
-      } catch (_) { /* 占用中则留给 cleanupStagedUpdates */ }
+      clearHandoff(userData);
       cleanupStagedUpdates();
       return;
     }
-    if (res.skipped) {
-      log(`skip same-path try=${tries}; keep handoff`);
-      if (staged && fs.existsSync(staged) && path.resolve(staged).toLowerCase() !== path.resolve(dst).toLowerCase()) {
-        src = staged;
-      }
-    } else {
-      log(`fail try=${tries} ${res.error || ''}`);
-    }
-    if (tries < 60) setTimeout(tick, 500);
-    else log('give up');
+    log(`fail try=${tries} ${res.error || (res.skipped ? 'skipped' : '')}`);
+    if (tries < 40) setTimeout(tick, 500);
+    else log('give up in-process');
   };
-  setTimeout(tick, 1500);
+  setTimeout(tick, 1000);
 }
 function setupSingleInstanceGuard() {
   app.on('second-instance', () => {
