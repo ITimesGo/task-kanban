@@ -419,6 +419,7 @@ document.querySelectorAll('.settings-nav-item').forEach((item) => {
 });
 
 let pendingUpdateUrl = '';
+let pendingUpdateLatest = '';
 const UPDATE_BADGE_KEY = 'kanban-update-available';
 
 function setUpdateBadge(on, latest) {
@@ -455,6 +456,7 @@ function applyUpdateCheckResult(res, { silent = false } = {}) {
   const hint = document.getElementById('aboutUpdateHint');
   const dlBtn = document.getElementById('downloadUpdateBtn');
   pendingUpdateUrl = '';
+  pendingUpdateLatest = '';
   if (dlBtn) {
     dlBtn.classList.add('hidden');
     dlBtn.hidden = true;
@@ -468,6 +470,7 @@ function applyUpdateCheckResult(res, { silent = false } = {}) {
     const notes = res.notes ? `：${res.notes}` : '';
     if (hint) hint.textContent = `发现新版本 ${res.latest}（当前 ${res.current}）${notes}`;
     pendingUpdateUrl = res.url || '';
+    pendingUpdateLatest = res.latest || '';
     if (dlBtn && pendingUpdateUrl) {
       dlBtn.classList.remove('hidden');
       dlBtn.hidden = false;
@@ -496,6 +499,7 @@ async function fillAboutPanel() {
   const hint = document.getElementById('aboutUpdateHint');
   const dlBtn = document.getElementById('downloadUpdateBtn');
   pendingUpdateUrl = '';
+  pendingUpdateLatest = '';
   if (dlBtn) {
     dlBtn.classList.add('hidden');
     dlBtn.hidden = true;
@@ -550,10 +554,10 @@ document.getElementById('downloadUpdateBtn')?.addEventListener('click', async ()
     else if (p.received) hint.textContent = `正在下载… ${(p.received / (1024 * 1024)).toFixed(1)} MB`;
   });
   try {
-    const res = await API.downloadUpdate(pendingUpdateUrl);
+    const res = await API.downloadUpdate(pendingUpdateUrl, { latest: pendingUpdateLatest });
     if (res && res.ok && res.applied) {
       if (hint) {
-        hint.textContent = '下载完成，即将退出并替换原程序后自动打开新版本…';
+        hint.textContent = res.message || '已下载，即将打开新版本。请以后用桌面「任务看板」快捷方式启动。';
       }
       setUpdateBadge(false);
       return;

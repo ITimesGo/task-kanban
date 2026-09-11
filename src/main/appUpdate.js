@@ -1,4 +1,4 @@
-/** 应用检查更新：版本比较与 feed 判定（纯逻辑，便于单测） */
+/** 应用检查更新 + 侧载安装（不覆盖正在运行的 exe） */
 
 const path = require('path');
 const fs = require('fs');
@@ -7,8 +7,9 @@ const fs = require('fs');
 const UPDATE_FEED_URL =
   'https://raw.githubusercontent.com/ITimesGo/task-kanban/main/docs/kanban-latest.json';
 
-const HANDOFF_FILE = 'update-handoff.json';
-const SELF_UPDATE_FLAG = '--kanban-self-update';
+const HANDOFF_FILE = 'update-handoff.json'; // 旧方案残留，启动时清理
+const INSTALL_SUBDIR = 'install';
+const CURRENT_FILE = 'current.json';
 
 function parseVersion(raw) {
   const s = String(raw == null ? '' : raw).trim().replace(/^v/i, '');
@@ -32,11 +33,6 @@ function compareVersions(a, b) {
   return 0;
 }
 
-/**
- * @param {string} localVersion
- * @param {object|null} feed
- * @returns {{ status: 'available'|'latest'|'invalid', current?: string, latest?: string, url?: string, notes?: string, error?: string }}
- */
 function evaluateUpdate(localVersion, feed) {
   if (!feed || typeof feed !== 'object') {
     return { status: 'invalid', error: '更新信息不完整' };
@@ -66,190 +62,125 @@ function toBase64Utf8(s) {
   return Buffer.from(String(s), 'utf8').toString('base64');
 }
 
-/**
- * portable 包运行时会解压到临时目录，process.execPath 指向临时文件。
- * electron-builder 会设置 PORTABLE_EXECUTABLE_FILE 为用户真正双击的那个 exe。
- */
-function resolveUpdateTargetPath({ isPackaged, execPath, env = process.env } = {}) {
-  if (isPackaged) {
-    const portable = String(env.PORTABLE_EXECUTABLE_FILE || '').trim();
-    if (portable) return portable;
-    const dir = String(env.PORTABLE_EXECUTABLE_DIR || '').trim();
-    const name = String(env.PORTABLE_EXECUTABLE_APP_FILENAME || '').trim();
-    if (dir && name) {
-      return path.join(dir, /\.exe$/i.test(name) ? name : `${name}.exe`);
-    }
-  }
-  return String(execPath || '');
+function installDir(userDataDir) {
+  return path.join(String(userDataDir || ''), INSTALL_SUBDIR);
 }
 
-/** 是否像解压后的临时目录（绝不能当作“用户的 exe”去覆盖） */
-function isExtractedTempPath(filePath, tmpDir = require('os').tmpdir()) {
-  const p = String(filePath || '').replace(/\//g, '\\').toLowerCase();
-  if (!p) return true;
-  const tmp = String(tmpDir || '').replace(/\//g, '\\').toLowerCase().replace(/\\+$/, '');
-  if (tmp && p.startsWith(tmp + '\\')) return true;
-  if (p.includes('\\temp\\') || p.includes('\\tmp\\')) return true;
-  if (p.includes('\\appdata\\local\\temp\\')) return true;
-  if (p.includes('\\pluginsdir\\')) return true;
-  return false;
+function currentPointerPath(userDataDir) {
+  return path.join(installDir(userDataDir), CURRENT_FILE);
+}
+
+function readCurrentPointer(userDataDir) {
+  try {
+    return JSON.parse(fs.readFileSync(currentPointerPath(userDataDir), 'utf8'));
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeCurrentPointer(userDataDir, payload) {
+  const dir = installDir(userDataDir);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(currentPointerPath(userDataDir), JSON.stringify(payload, null, 2), 'utf8');
 }
 
 function handoffPath(userDataDir) {
   return path.join(String(userDataDir || ''), HANDOFF_FILE);
 }
 
-function writeHandoff(userDataDir, payload) {
-  const dir = String(userDataDir || '');
-  if (!dir) throw new Error('userDataDir required');
-  fs.mkdirSync(dir, { recursive: true });
-  const file = handoffPath(dir);
-  fs.writeFileSync(file, JSON.stringify(payload, null, 2), 'utf8');
-  return file;
-}
-
-function readHandoff(userDataDir) {
-  try {
-    const raw = fs.readFileSync(handoffPath(userDataDir), 'utf8');
-    const data = JSON.parse(raw);
-    if (!data || typeof data !== 'object') return null;
-    return data;
-  } catch (_) {
-    return null;
-  }
-}
-
 function clearHandoff(userDataDir) {
   try { fs.unlinkSync(handoffPath(userDataDir)); } catch (_) { /* ignore */ }
 }
 
+/** 从下载 URL 或 version 生成安装文件名 */
+function installExeName(version, url) {
+  const ver = String(version || '').trim() || 'update';
+  try {
+    const base = path.basename(new URL(String(url || '')).pathname);
+    if (base && /\.exe$/i.test(base)) return decodeURIComponent(base);
+  } catch (_) { /* ignore */ }
+  return `task-kanban-${ver}.exe`;
+}
+
 /**
- * 旧进程退出后，在外部脚本里：复制新包 → 覆盖用户原来的 exe → 启动原路径。
- * 绝不能在「正从原路径运行」的进程里 copy 覆盖自己（会 EBUSY）。
+ * 旧进程退出后：创建/更新桌面快捷方式 → 启动新 exe（新文件，无覆盖冲突）。
  */
-function buildReplaceAndLaunchScript({
+function buildSideBySideLaunchScript({
   pid,
   parentPid = 0,
   newExePath,
-  targetPath,
+  shortcutPath = '',
   logPath = '',
-  handoffJsonPath = '',
 } = {}) {
   const pidNum = Number(pid);
-  if (!Number.isFinite(pidNum) || pidNum <= 0) {
-    throw new Error('invalid pid');
-  }
+  if (!Number.isFinite(pidNum) || pidNum <= 0) throw new Error('invalid pid');
   const parentNum = Number(parentPid);
   const waitParent = Number.isFinite(parentNum) && parentNum > 0 && parentNum !== pidNum;
   const newB64 = toBase64Utf8(newExePath);
-  const dstB64 = toBase64Utf8(targetPath);
+  const shortcutB64 = shortcutPath ? toBase64Utf8(shortcutPath) : '';
   const logB64 = logPath ? toBase64Utf8(logPath) : '';
-  const hoB64 = handoffJsonPath ? toBase64Utf8(handoffJsonPath) : '';
 
   return [
     "$ErrorActionPreference = 'Continue'",
     `function Decode-B64([string]$b) { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b)) }`,
     `$newExe = Decode-B64 '${newB64}'`,
-    `$dst = Decode-B64 '${dstB64}'`,
+    shortcutB64 ? `$shortcut = Decode-B64 '${shortcutB64}'` : `$shortcut = ''`,
     logB64
       ? `$log = Decode-B64 '${logB64}'`
-      : `$log = Join-Path $env:TEMP ('kanban-replace-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss') + '.log')`,
-    hoB64 ? `$handoff = Decode-B64 '${hoB64}'` : `$handoff = ''`,
+      : `$log = Join-Path $env:TEMP ('kanban-launch-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss') + '.log')`,
     `function Log([string]$m) { try { Add-Content -LiteralPath $log -Value ((Get-Date -Format o) + ' ' + $m) -Encoding UTF8 } catch {} }`,
-    `Log ('replace newExe=' + $newExe)`,
-    `Log ('replace dst=' + $dst)`,
+    `Log ('side-by-side launch ' + $newExe)`,
     `$pids = @(${pidNum}${waitParent ? `,${parentNum}` : ''})`,
-    `Log ('wait pids=' + ($pids -join ','))`,
     'foreach ($p in $pids) {',
     '  while (Get-Process -Id $p -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 400 }',
     '}',
-    'Start-Sleep -Milliseconds 1500',
-    'function Test-ExclusiveWrite([string]$path) {',
-    '  try {',
-    "    if (-not (Test-Path -LiteralPath $path)) { return $true }",
-    "    $fs = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)",
-    '    $fs.Close()',
-    '    return $true',
-    '  } catch { return $false }',
-    '}',
-    '$ready = $false',
-    'for ($i = 1; $i -le 120; $i++) {',
-    '  if (Test-ExclusiveWrite $dst) { $ready = $true; break }',
-    '  Start-Sleep -Milliseconds 500',
-    '}',
-    'if (-not $ready) { Log "dst still locked"; throw "dst still locked" }',
+    'Start-Sleep -Milliseconds 800',
     'if (-not (Test-Path -LiteralPath $newExe)) { Log "new exe missing"; throw "new exe missing" }',
-    '$srcLen = (Get-Item -LiteralPath $newExe).Length',
-    '$ok = $false',
-    'for ($i = 1; $i -le 40; $i++) {',
+    'if ($shortcut) {',
     '  try {',
-    '    Copy-Item -LiteralPath $newExe -Destination $dst -Force',
-    '    $dstLen = (Get-Item -LiteralPath $dst).Length',
-    '    if ($dstLen -ne $srcLen) { throw "size mismatch" }',
-    '    $ok = $true',
-    '    Log ("copied ok size=" + $dstLen)',
-    '    break',
-    '  } catch {',
-    '    Log ("copy try " + $i + " fail: " + $_.Exception.Message)',
-    '    Start-Sleep -Milliseconds 500',
-    '  }',
+    '    $shell = New-Object -ComObject WScript.Shell',
+    '    $lnk = $shell.CreateShortcut($shortcut)',
+    '    $lnk.TargetPath = $newExe',
+    '    $lnk.WorkingDirectory = Split-Path -Parent $newExe',
+    '    $lnk.IconLocation = ($newExe + ",0")',
+    '    $lnk.Save()',
+    '    Log ("shortcut ok " + $shortcut)',
+    '  } catch { Log ("shortcut fail: " + $_.Exception.Message) }',
     '}',
-    'if (-not $ok) { throw "copy failed" }',
-    'try { Remove-Item -LiteralPath $newExe -Force -ErrorAction SilentlyContinue } catch {}',
-    'if ($handoff) { try { Remove-Item -LiteralPath $handoff -Force -ErrorAction SilentlyContinue } catch {} }',
-    'Start-Process -FilePath $dst',
-    'Log "started dst"',
+    'Start-Process -FilePath $newExe',
+    'Log "started"',
     'Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue',
   ].join('\r\n');
 }
 
-/** @deprecated 保留别名，避免旧引用报错 */
-function buildHandoffScript(opts) {
-  return buildReplaceAndLaunchScript({
-    ...opts,
-    targetPath: opts.targetPath || opts.newExePath,
-    newExePath: opts.newExePath,
-  });
-}
-
-/**
- * 把当前正在运行的新 portable 包复制到用户原来的快捷方式/桌面路径。
- * 若 source/target 相同，或目标正被本进程占用，不要调用。
- */
-function copyPortableOverTarget(sourcePath, targetPath) {
-  const src = String(sourcePath || '');
-  const dst = String(targetPath || '');
-  if (!src || !dst) return { ok: false, error: 'missing path' };
-  if (path.resolve(src).toLowerCase() === path.resolve(dst).toLowerCase()) {
-    return { ok: true, skipped: true };
-  }
-  if (!fs.existsSync(src)) return { ok: false, error: 'source missing' };
-  try {
-    fs.copyFileSync(src, dst);
-    const a = fs.statSync(src).size;
-    const b = fs.statSync(dst).size;
-    if (a !== b) return { ok: false, error: `size mismatch ${a} vs ${b}` };
-    return { ok: true, bytes: a };
-  } catch (err) {
-    return { ok: false, error: (err && err.message) || String(err) };
+/** 清理 install 目录里非当前版本的旧包 */
+function cleanupOldInstalls(userDataDir, keepExePath) {
+  const dir = installDir(userDataDir);
+  let names;
+  try { names = fs.readdirSync(dir); } catch (_) { return; }
+  const keep = path.resolve(String(keepExePath || '')).toLowerCase();
+  for (const name of names) {
+    if (!/\.exe$/i.test(name)) continue;
+    const full = path.join(dir, name);
+    if (keep && path.resolve(full).toLowerCase() === keep) continue;
+    try { fs.unlinkSync(full); } catch (_) { /* ignore */ }
   }
 }
 
 module.exports = {
   UPDATE_FEED_URL,
   HANDOFF_FILE,
-  SELF_UPDATE_FLAG,
+  INSTALL_SUBDIR,
   parseVersion,
   compareVersions,
   evaluateUpdate,
   toBase64Utf8,
-  resolveUpdateTargetPath,
-  isExtractedTempPath,
+  installDir,
+  readCurrentPointer,
+  writeCurrentPointer,
   handoffPath,
-  writeHandoff,
-  readHandoff,
   clearHandoff,
-  buildReplaceAndLaunchScript,
-  buildHandoffScript,
-  copyPortableOverTarget,
+  installExeName,
+  buildSideBySideLaunchScript,
+  cleanupOldInstalls,
 };
