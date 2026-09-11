@@ -1,5 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const os = require('os');
+const path = require('path');
 const {
   compareVersions,
   parseVersion,
@@ -7,7 +9,9 @@ const {
   UPDATE_FEED_URL,
   psSingleQuote,
   resolveUpdateTargetPath,
+  isExtractedTempPath,
   buildApplyUpdateScript,
+  toBase64Utf8,
 } = require('../src/main/appUpdate');
 
 test('parseVersion 支持 v 前缀与缺段', () => {
@@ -56,16 +60,22 @@ test('psSingleQuote 转义单引号', () => {
   assert.equal(psSingleQuote(`C:\\a'b.exe`), `'C:\\a''b.exe'`);
 });
 
-test('buildApplyUpdateScript 等待 PID 并覆盖目标', () => {
+test('buildApplyUpdateScript 使用 base64 路径并等待父进程', () => {
+  const src = 'C:\\Temp\\new.exe';
+  const dst = 'D:\\Apps\\任务看板.exe';
   const s = buildApplyUpdateScript({
     pid: 12345,
-    sourcePath: 'C:\\Temp\\new.exe',
-    targetPath: 'D:\\Apps\\任务看板.exe',
+    parentPid: 67890,
+    sourcePath: src,
+    targetPath: dst,
+    logPath: 'C:\\Temp\\u.log',
   });
-  assert.match(s, /\$pidToWait = 12345/);
-  assert.match(s, /Copy-Item/);
-  assert.match(s, /Start-Process/);
-  assert.doesNotMatch(s, /\$PID\s*=/);
+  assert.match(s, /\$pids = @\(12345,67890\)/);
+  assert.match(s, /FromBase64String/);
+  assert.ok(s.includes(toBase64Utf8(src)));
+  assert.ok(s.includes(toBase64Utf8(dst)));
+  assert.match(s, /Test-ExclusiveWrite/);
+  assert.match(s, /size mismatch/);
   assert.throws(() => buildApplyUpdateScript({ pid: 0, sourcePath: 'a', targetPath: 'b' }));
 });
 
@@ -84,16 +94,26 @@ test('resolveUpdateTargetPath 优先用 PORTABLE_EXECUTABLE_FILE', () => {
     resolveUpdateTargetPath({
       isPackaged: true,
       execPath: tempExec,
+      env: {
+        PORTABLE_EXECUTABLE_DIR: 'D:\\Apps',
+        PORTABLE_EXECUTABLE_APP_FILENAME: 'task-kanban',
+      },
+    }),
+    path.join('D:\\Apps', 'task-kanban.exe')
+  );
+  assert.equal(
+    resolveUpdateTargetPath({
+      isPackaged: true,
+      execPath: tempExec,
       env: {},
     }),
     tempExec
   );
-  assert.equal(
-    resolveUpdateTargetPath({
-      isPackaged: false,
-      execPath: tempExec,
-      env: { PORTABLE_EXECUTABLE_FILE: portable },
-    }),
-    tempExec
-  );
+});
+
+test('isExtractedTempPath 识别临时解压目录', () => {
+  const tmp = os.tmpdir();
+  assert.equal(isExtractedTempPath(path.join(tmp, 'abc', 'app.exe'), tmp), true);
+  assert.equal(isExtractedTempPath('D:\\Tools\\task-kanban-1.0.7.exe', tmp), false);
+  assert.equal(isExtractedTempPath('C:\\Users\\x\\AppData\\Local\\Temp\\x\\a.exe', tmp), true);
 });

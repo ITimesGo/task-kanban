@@ -24,7 +24,7 @@ const mediaLayout = require('./mediaLayout');
 const ocr = require('./ocr');
 const plugins = require('./plugins');
 const { normalizeMediaPayload } = require('../renderer/taskMedia');
-const { UPDATE_FEED_URL, evaluateUpdate, buildApplyUpdateScript, resolveUpdateTargetPath } = require('./appUpdate');
+const { UPDATE_FEED_URL, evaluateUpdate, buildApplyUpdateScript, resolveUpdateTargetPath, isExtractedTempPath } = require('./appUpdate');
 
 // 自定义协议：taskimage://local/images/xxx.png -> 磁盘文件
 // 注意：scheme 注册为 standard，taskimage:// 后第一段是 host，故 URL 形如 taskimage://local/<rel>
@@ -631,7 +631,7 @@ function setupSettingsHandlers() {
 
   /**
    * 下载新版 exe 后：退出当前进程，由外部脚本覆盖用户真正的 portable 文件并重新启动。
-   * portable 会解压到临时目录，必须覆盖 PORTABLE_EXECUTABLE_FILE，而不是 process.execPath。
+   * portable 启动器（NSIS）会 ExecWait 子进程并锁住用户双击的 exe，必须等启动器退出后再覆盖。
    */
   ipcHandle('update:download', async (_e, url) => {
     const u = String(url || '').trim();
@@ -646,10 +646,10 @@ function setupSettingsHandlers() {
       execPath: process.execPath,
       env: process.env,
     });
+    const targetIsTemp = isExtractedTempPath(targetPath, os.tmpdir());
+    const hasPortableEnv = !!(process.env.PORTABLE_EXECUTABLE_FILE || process.env.PORTABLE_EXECUTABLE_DIR);
 
-    const canReplaceSelf = () => {
-      if (!app.isPackaged || !targetPath) return false;
-      const dir = path.dirname(targetPath);
+    const canWriteDir = (dir) => {
       const probe = path.join(dir, `.kanban-write-test-${process.pid}`);
       try {
         fs.writeFileSync(probe, '1');
@@ -659,6 +659,9 @@ function setupSettingsHandlers() {
         return false;
       }
     };
+
+    /** 仅当能定位到用户真正的 portable 文件（非临时解压目录）时才自动替换 */
+    const canApply = app.isPackaged && hasPortableEnv && targetPath && !targetIsTemp && canWriteDir(path.dirname(targetPath));
 
     const uniqueDest = (dir, name) => {
       let dest = path.join(dir, name);
@@ -680,9 +683,8 @@ function setupSettingsHandlers() {
     } catch (_) { /* keep default */ }
     if (!/\.exe$/i.test(fileName)) fileName = `${fileName || 'task-kanban-update'}.exe`;
 
-    const apply = canReplaceSelf();
-    const destDir = apply ? os.tmpdir() : app.getPath('downloads');
-    const dest = uniqueDest(destDir, apply ? `kanban-update-${Date.now()}.exe` : fileName);
+    const destDir = canApply ? path.dirname(targetPath) : app.getPath('downloads');
+    const dest = uniqueDest(destDir, canApply ? `kanban-update-${Date.now()}.exe` : fileName);
 
     async function downloadTo(destPath) {
       const res = await net.fetch(u, { method: 'GET' });
@@ -729,22 +731,46 @@ function setupSettingsHandlers() {
       return { ok: false, error: (err && err.message) || '下载失败' };
     }
 
-    if (!apply) {
+    if (!canApply) {
       try { shell.showItemInFolder(dest); } catch (_) { /* ignore */ }
-      const why = app.isPackaged
-        ? `无法写入程序文件所在目录（${targetPath || '未知路径'}），已下载到「下载」文件夹，请退出后手动用新文件替换原来的 exe。`
-        : '开发模式不支持自动替换；已下载到「下载」文件夹。正式打包版会自动替换并重启。';
-      return { ok: true, applied: false, path: dest, message: why };
+      let why;
+      if (!app.isPackaged) {
+        why = '开发模式不支持自动替换；已下载到「下载」文件夹。请用正式打包的 portable 版升级。';
+      } else if (!hasPortableEnv || targetIsTemp) {
+        why = `无法定位你双击的那个程序文件（当前运行在临时解压目录）。已下载到：${dest}。请完全退出后，用这个新文件替换原来的 exe。`;
+      } else {
+        why = `无法写入程序目录（${path.dirname(targetPath)}），已下载到：${dest}。请退出后手动替换。`;
+      }
+      return { ok: true, applied: false, path: dest, targetPath, message: why };
     }
 
+    const getParentPid = (pid) => {
+      try {
+        const out = require('child_process').execFileSync(
+          'powershell.exe',
+          ['-NoProfile', '-Command', `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").ParentProcessId`],
+          { encoding: 'utf8', windowsHide: true, timeout: 8000 }
+        );
+        const n = parseInt(String(out).trim(), 10);
+        return Number.isFinite(n) && n > 0 ? n : 0;
+      } catch (_) {
+        return 0;
+      }
+    };
+
     try {
+      const parentPid = getParentPid(process.pid);
+      const logPath = path.join(os.tmpdir(), `kanban-update-${Date.now()}.log`);
       const scriptPath = path.join(os.tmpdir(), `kanban-apply-${Date.now()}.ps1`);
       const script = buildApplyUpdateScript({
         pid: process.pid,
+        parentPid,
         sourcePath: dest,
         targetPath,
+        logPath,
       });
-      fs.writeFileSync(scriptPath, script, 'utf8');
+      // UTF-8 BOM，避免部分环境下脚本自身编码异常
+      fs.writeFileSync(scriptPath, `\uFEFF${script}`, 'utf8');
       const child = spawn(
         'powershell.exe',
         ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', scriptPath],
@@ -753,15 +779,16 @@ function setupSettingsHandlers() {
       child.unref();
       setTimeout(() => {
         try { app.quit(); } catch (_) { /* ignore */ }
-      }, 400);
-      return { ok: true, applied: true, path: dest, targetPath };
+      }, 500);
+      return { ok: true, applied: true, path: dest, targetPath, logPath, parentPid };
     } catch (err) {
       try { shell.showItemInFolder(dest); } catch (_) { /* ignore */ }
       return {
         ok: true,
         applied: false,
         path: dest,
-        message: `自动替换失败：${(err && err.message) || '未知错误'}。文件已保留，请退出后手动替换原来的 exe。`,
+        targetPath,
+        message: `自动替换失败：${(err && err.message) || '未知错误'}。文件已保留，请退出后手动替换：${dest}`,
       };
     }
   });

@@ -552,7 +552,9 @@ document.getElementById('downloadUpdateBtn')?.addEventListener('click', async ()
   try {
     const res = await API.downloadUpdate(pendingUpdateUrl);
     if (res && res.ok && res.applied) {
-      if (hint) hint.textContent = '下载完成，正在退出并替换为新版本…';
+      if (hint) {
+        hint.textContent = `下载完成，正在退出并替换：${res.targetPath || '程序文件'}（请稍等几秒，勿手动打开旧文件）`;
+      }
       setUpdateBadge(false);
       return;
     }
