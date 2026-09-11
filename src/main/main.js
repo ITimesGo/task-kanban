@@ -683,7 +683,7 @@ function setupSettingsHandlers() {
     } catch (_) { /* keep default */ }
     if (!/\.exe$/i.test(fileName)) fileName = `${fileName || 'task-kanban-update'}.exe`;
 
-    const destDir = canApply ? path.dirname(targetPath) : app.getPath('downloads');
+    const destDir = canApply ? os.tmpdir() : app.getPath('downloads');
     const dest = uniqueDest(destDir, canApply ? `kanban-update-${Date.now()}.exe` : fileName);
 
     async function downloadTo(destPath) {
@@ -768,6 +768,7 @@ function setupSettingsHandlers() {
         sourcePath: dest,
         targetPath,
         logPath,
+        fallbackDir: app.getPath('downloads'),
       });
       // UTF-8 BOM，避免部分环境下脚本自身编码异常
       fs.writeFileSync(scriptPath, `\uFEFF${script}`, 'utf8');

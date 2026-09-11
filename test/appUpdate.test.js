@@ -69,13 +69,15 @@ test('buildApplyUpdateScript 使用 base64 路径并等待父进程', () => {
     sourcePath: src,
     targetPath: dst,
     logPath: 'C:\\Temp\\u.log',
+    fallbackDir: 'C:\\Users\\x\\Downloads',
   });
   assert.match(s, /\$pids = @\(12345,67890\)/);
   assert.match(s, /FromBase64String/);
   assert.ok(s.includes(toBase64Utf8(src)));
   assert.ok(s.includes(toBase64Utf8(dst)));
   assert.match(s, /Test-ExclusiveWrite/);
-  assert.match(s, /size mismatch/);
+  assert.match(s, /Move-Item/);
+  assert.match(s, /fallback moved/);
   assert.throws(() => buildApplyUpdateScript({ pid: 0, sourcePath: 'a', targetPath: 'b' }));
 });
 

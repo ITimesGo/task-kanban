@@ -99,9 +99,16 @@ function isExtractedTempPath(filePath, tmpDir = require('os').tmpdir()) {
 
 /**
  * 生成替换脚本。路径用 Base64 传入，避免 ps1 文件编码把中文路径弄坏。
- * 会等待应用进程 + 可选的父进程（portable NSIS 启动器）退出，并等到目标文件可写后再覆盖。
+ * 下载包放在临时目录；成功则覆盖用户原来的 exe 并删临时包；失败则挪到「下载」文件夹，避免桌面留下 kanban-update-*.exe。
  */
-function buildApplyUpdateScript({ pid, parentPid = 0, sourcePath, targetPath, logPath = '' }) {
+function buildApplyUpdateScript({
+  pid,
+  parentPid = 0,
+  sourcePath,
+  targetPath,
+  logPath = '',
+  fallbackDir = '',
+} = {}) {
   const pidNum = Number(pid);
   if (!Number.isFinite(pidNum) || pidNum <= 0) {
     throw new Error('invalid pid');
@@ -111,6 +118,7 @@ function buildApplyUpdateScript({ pid, parentPid = 0, sourcePath, targetPath, lo
   const srcB64 = toBase64Utf8(sourcePath);
   const dstB64 = toBase64Utf8(targetPath);
   const logB64 = logPath ? toBase64Utf8(logPath) : '';
+  const fallbackB64 = fallbackDir ? toBase64Utf8(fallbackDir) : '';
 
   return [
     "$ErrorActionPreference = 'Continue'",
@@ -120,6 +128,9 @@ function buildApplyUpdateScript({ pid, parentPid = 0, sourcePath, targetPath, lo
     logB64
       ? `$log = Decode-B64 '${logB64}'`
       : `$log = Join-Path $env:TEMP ('kanban-update-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss') + '.log')`,
+    fallbackB64
+      ? `$fallbackDir = Decode-B64 '${fallbackB64}'`
+      : `$fallbackDir = [Environment]::GetFolderPath('UserProfile') + '\\Downloads'`,
     `function Log([string]$m) { try { Add-Content -LiteralPath $log -Value ((Get-Date -Format o) + ' ' + $m) -Encoding UTF8 } catch {} }`,
     `Log ('start src=' + $src)`,
     `Log ('start dst=' + $dst)`,
@@ -128,7 +139,7 @@ function buildApplyUpdateScript({ pid, parentPid = 0, sourcePath, targetPath, lo
     'foreach ($p in $pids) {',
     '  while (Get-Process -Id $p -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 400 }',
     '}',
-    'Start-Sleep -Milliseconds 800',
+    'Start-Sleep -Milliseconds 1000',
     'function Test-ExclusiveWrite([string]$path) {',
     '  try {',
     "    $fs = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)",
@@ -137,7 +148,7 @@ function buildApplyUpdateScript({ pid, parentPid = 0, sourcePath, targetPath, lo
     '  } catch { return $false }',
     '}',
     '$ready = $false',
-    'for ($i = 1; $i -le 90; $i++) {',
+    'for ($i = 1; $i -le 120; $i++) {',
     '  if (-not (Test-Path -LiteralPath $dst)) { $ready = $true; break }',
     '  if (Test-ExclusiveWrite $dst) { $ready = $true; break }',
     '  Start-Sleep -Milliseconds 500',
@@ -146,21 +157,41 @@ function buildApplyUpdateScript({ pid, parentPid = 0, sourcePath, targetPath, lo
     'Log "target unlocked"',
     '$srcLen = (Get-Item -LiteralPath $src).Length',
     '$copied = $false',
-    'for ($i = 1; $i -le 40; $i++) {',
+    'for ($i = 1; $i -le 50; $i++) {',
     '  try {',
-    '    Copy-Item -LiteralPath $src -Destination $dst -Force',
+    '    if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Force -ErrorAction Stop }',
+    '    Move-Item -LiteralPath $src -Destination $dst -Force -ErrorAction Stop',
     '    $dstLen = (Get-Item -LiteralPath $dst).Length',
     '    if ($dstLen -ne $srcLen) { throw "size mismatch" }',
     '    $copied = $true',
-    '    Log ("copied ok size=" + $dstLen)',
+    '    Log ("replaced ok size=" + $dstLen)',
     '    break',
     '  } catch {',
-    '    Log ("copy try " + $i + " fail: " + $_.Exception.Message)',
-    '    Start-Sleep -Milliseconds 500',
+    '    Log ("replace try " + $i + " fail: " + $_.Exception.Message)',
+    '    try {',
+    '      Copy-Item -LiteralPath $src -Destination $dst -Force -ErrorAction Stop',
+    '      $dstLen = (Get-Item -LiteralPath $dst).Length',
+    '      if ($dstLen -ne $srcLen) { throw "size mismatch" }',
+    '      Remove-Item -LiteralPath $src -Force -ErrorAction SilentlyContinue',
+    '      $copied = $true',
+    '      Log ("copied ok size=" + $dstLen)',
+    '      break',
+    '    } catch {',
+    '      Log ("copy try " + $i + " fail: " + $_.Exception.Message)',
+    '      Start-Sleep -Milliseconds 500',
+    '    }',
     '  }',
     '}',
-    'if (-not $copied) { throw "failed to replace executable" }',
-    'Remove-Item -LiteralPath $src -Force -ErrorAction SilentlyContinue',
+    'if (-not $copied) {',
+    '  try {',
+    '    if (-not (Test-Path -LiteralPath $fallbackDir)) { New-Item -ItemType Directory -Path $fallbackDir -Force | Out-Null }',
+    "    $fb = Join-Path $fallbackDir ('task-kanban-update-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss') + '.exe')",
+    '    Move-Item -LiteralPath $src -Destination $fb -Force',
+    '    Log ("fallback moved to " + $fb)',
+    '  } catch { Log ("fallback move fail: " + $_.Exception.Message) }',
+    '  throw "failed to replace executable"',
+    '}',
+    'if (Test-Path -LiteralPath $src) { Remove-Item -LiteralPath $src -Force -ErrorAction SilentlyContinue }',
     'Start-Process -FilePath $dst',
     'Log "started"',
     'Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue',
