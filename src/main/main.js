@@ -24,7 +24,7 @@ const mediaLayout = require('./mediaLayout');
 const ocr = require('./ocr');
 const plugins = require('./plugins');
 const { normalizeMediaPayload } = require('../renderer/taskMedia');
-const { UPDATE_FEED_URL, evaluateUpdate, buildApplyUpdateScript } = require('./appUpdate');
+const { UPDATE_FEED_URL, evaluateUpdate, buildApplyUpdateScript, resolveUpdateTargetPath } = require('./appUpdate');
 
 // 自定义协议：taskimage://local/images/xxx.png -> 磁盘文件
 // 注意：scheme 注册为 standard，taskimage:// 后第一段是 host，故 URL 形如 taskimage://local/<rel>
@@ -630,8 +630,8 @@ function setupSettingsHandlers() {
   });
 
   /**
-   * 下载新版 exe 后：退出当前进程，由外部脚本覆盖正在运行的 portable 文件并重新启动。
-   * （Windows 无法在进程仍占用时直接覆盖自身 exe）
+   * 下载新版 exe 后：退出当前进程，由外部脚本覆盖用户真正的 portable 文件并重新启动。
+   * portable 会解压到临时目录，必须覆盖 PORTABLE_EXECUTABLE_FILE，而不是 process.execPath。
    */
   ipcHandle('update:download', async (_e, url) => {
     const u = String(url || '').trim();
@@ -641,9 +641,15 @@ function setupSettingsHandlers() {
       if (win && !win.isDestroyed()) win.webContents.send('update:downloadProgress', payload);
     };
 
+    const targetPath = resolveUpdateTargetPath({
+      isPackaged: app.isPackaged,
+      execPath: process.execPath,
+      env: process.env,
+    });
+
     const canReplaceSelf = () => {
-      if (!app.isPackaged) return false;
-      const dir = path.dirname(process.execPath);
+      if (!app.isPackaged || !targetPath) return false;
+      const dir = path.dirname(targetPath);
       const probe = path.join(dir, `.kanban-write-test-${process.pid}`);
       try {
         fs.writeFileSync(probe, '1');
@@ -667,12 +673,12 @@ function setupSettingsHandlers() {
       return dest;
     };
 
-    let fileName = '任务看板-update.exe';
+    let fileName = 'task-kanban-update.exe';
     try {
       const base = path.basename(new URL(u).pathname);
       if (base) fileName = decodeURIComponent(base);
     } catch (_) { /* keep default */ }
-    if (!/\.exe$/i.test(fileName)) fileName = `${fileName || '任务看板-update'}.exe`;
+    if (!/\.exe$/i.test(fileName)) fileName = `${fileName || 'task-kanban-update'}.exe`;
 
     const apply = canReplaceSelf();
     const destDir = apply ? os.tmpdir() : app.getPath('downloads');
@@ -726,7 +732,7 @@ function setupSettingsHandlers() {
     if (!apply) {
       try { shell.showItemInFolder(dest); } catch (_) { /* ignore */ }
       const why = app.isPackaged
-        ? '无法写入当前程序所在目录（权限不足），已下载到「下载」文件夹，请退出后手动替换。'
+        ? `无法写入程序文件所在目录（${targetPath || '未知路径'}），已下载到「下载」文件夹，请退出后手动用新文件替换原来的 exe。`
         : '开发模式不支持自动替换；已下载到「下载」文件夹。正式打包版会自动替换并重启。';
       return { ok: true, applied: false, path: dest, message: why };
     }
@@ -736,7 +742,7 @@ function setupSettingsHandlers() {
       const script = buildApplyUpdateScript({
         pid: process.pid,
         sourcePath: dest,
-        targetPath: process.execPath,
+        targetPath,
       });
       fs.writeFileSync(scriptPath, script, 'utf8');
       const child = spawn(
@@ -748,14 +754,14 @@ function setupSettingsHandlers() {
       setTimeout(() => {
         try { app.quit(); } catch (_) { /* ignore */ }
       }, 400);
-      return { ok: true, applied: true, path: dest };
+      return { ok: true, applied: true, path: dest, targetPath };
     } catch (err) {
       try { shell.showItemInFolder(dest); } catch (_) { /* ignore */ }
       return {
         ok: true,
         applied: false,
         path: dest,
-        message: `自动替换失败：${(err && err.message) || '未知错误'}。文件已保留，请退出后手动替换。`,
+        message: `自动替换失败：${(err && err.message) || '未知错误'}。文件已保留，请退出后手动替换原来的 exe。`,
       };
     }
   });

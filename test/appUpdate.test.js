@@ -6,6 +6,7 @@ const {
   evaluateUpdate,
   UPDATE_FEED_URL,
   psSingleQuote,
+  resolveUpdateTargetPath,
   buildApplyUpdateScript,
 } = require('../src/main/appUpdate');
 
@@ -66,4 +67,33 @@ test('buildApplyUpdateScript 等待 PID 并覆盖目标', () => {
   assert.match(s, /Start-Process/);
   assert.doesNotMatch(s, /\$PID\s*=/);
   assert.throws(() => buildApplyUpdateScript({ pid: 0, sourcePath: 'a', targetPath: 'b' }));
+});
+
+test('resolveUpdateTargetPath 优先用 PORTABLE_EXECUTABLE_FILE', () => {
+  const portable = 'D:\\Apps\\task-kanban-1.0.3.exe';
+  const tempExec = 'C:\\Users\\x\\AppData\\Local\\Temp\\xxx\\任务看板.exe';
+  assert.equal(
+    resolveUpdateTargetPath({
+      isPackaged: true,
+      execPath: tempExec,
+      env: { PORTABLE_EXECUTABLE_FILE: portable },
+    }),
+    portable
+  );
+  assert.equal(
+    resolveUpdateTargetPath({
+      isPackaged: true,
+      execPath: tempExec,
+      env: {},
+    }),
+    tempExec
+  );
+  assert.equal(
+    resolveUpdateTargetPath({
+      isPackaged: false,
+      execPath: tempExec,
+      env: { PORTABLE_EXECUTABLE_FILE: portable },
+    }),
+    tempExec
+  );
 });

@@ -62,6 +62,19 @@ function psSingleQuote(s) {
 }
 
 /**
+ * portable 包运行时会解压到临时目录，process.execPath 指向临时文件。
+ * electron-builder 会设置 PORTABLE_EXECUTABLE_FILE 为用户真正双击的那个 exe。
+ * 自动升级必须覆盖这个路径，否则下次打开「原来的软件」仍是旧版。
+ */
+function resolveUpdateTargetPath({ isPackaged, execPath, env = process.env } = {}) {
+  if (isPackaged) {
+    const portable = String(env.PORTABLE_EXECUTABLE_FILE || '').trim();
+    if (portable) return portable;
+  }
+  return String(execPath || '');
+}
+
+/**
  * 生成「等旧进程退出 → 覆盖 exe → 启动新程序 → 删临时文件」的 PowerShell 脚本。
  * 注意：勿用 $PID（PowerShell 保留变量）。
  */
@@ -76,8 +89,18 @@ function buildApplyUpdateScript({ pid, sourcePath, targetPath }) {
     `$src = ${psSingleQuote(sourcePath)}`,
     `$dst = ${psSingleQuote(targetPath)}`,
     'while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }',
-    'Start-Sleep -Milliseconds 400',
-    'Copy-Item -LiteralPath $src -Destination $dst -Force',
+    'Start-Sleep -Milliseconds 500',
+    '$copied = $false',
+    'for ($i = 1; $i -le 40; $i++) {',
+    '  try {',
+    '    Copy-Item -LiteralPath $src -Destination $dst -Force',
+    '    $copied = $true',
+    '    break',
+    '  } catch {',
+    '    Start-Sleep -Milliseconds 500',
+    '  }',
+    '}',
+    'if (-not $copied) { throw "failed to replace executable" }',
     'Remove-Item -LiteralPath $src -Force -ErrorAction SilentlyContinue',
     'Start-Process -FilePath $dst',
     'Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue',
@@ -90,5 +113,6 @@ module.exports = {
   compareVersions,
   evaluateUpdate,
   psSingleQuote,
+  resolveUpdateTargetPath,
   buildApplyUpdateScript,
 };
