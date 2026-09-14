@@ -1,5 +1,8 @@
 # 应用内检查更新 — 设计
 
+> **已过时（归档）**：本文描述的 `docs/kanban-latest.json` + 打开下载页方案已废弃。  
+> 现行方案：NSIS + electron-updater，见 `docs/electron-windows-auto-update-playbook.md`、`docs/更新说明.md`。
+
 日期：2026-09-10  
 范围：简易任务看板（portable）
 
