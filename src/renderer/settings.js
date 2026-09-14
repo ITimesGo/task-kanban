@@ -452,6 +452,42 @@ function restoreUpdateBadgeFromCache() {
   } catch (_) { /* ignore */ }
 }
 
+function parseUpdateNoteItems(notes) {
+  const text = String(notes || '').replace(/\r\n/g, '\n').trim();
+  if (!text) return [];
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const items = [];
+  for (const line of lines) {
+    const m = line.match(/^(?:[-*•]|\d+[.)])\s+(.*)$/);
+    items.push(m ? m[1].trim() : line);
+  }
+  return items.filter(Boolean);
+}
+
+function renderUpdateNotes(notes) {
+  const box = document.getElementById('aboutUpdateNotes');
+  const list = document.getElementById('aboutUpdateNotesList');
+  if (!box || !list) return;
+  const items = parseUpdateNoteItems(notes);
+  list.innerHTML = '';
+  if (!items.length) {
+    box.classList.add('hidden');
+    box.hidden = true;
+    return;
+  }
+  for (const item of items) {
+    const li = document.createElement('li');
+    li.textContent = item;
+    list.appendChild(li);
+  }
+  box.classList.remove('hidden');
+  box.hidden = false;
+}
+
+function clearUpdateNotes() {
+  renderUpdateNotes('');
+}
+
 function applyUpdateCheckResult(res, { silent = false } = {}) {
   const hint = document.getElementById('aboutUpdateHint');
   const dlBtn = document.getElementById('downloadUpdateBtn');
@@ -463,15 +499,20 @@ function applyUpdateCheckResult(res, { silent = false } = {}) {
     dlBtn.disabled = false;
   }
   if (!res || !res.ok) {
-    if (!silent && hint) hint.textContent = (res && res.error) || '检查失败';
+    clearUpdateNotes();
+    if (!silent && hint) {
+      hint.textContent = (res && res.error) || '检查失败';
+    }
     return false;
   }
   if (res.status === 'available') {
-    const notes = res.notes ? `：${res.notes}` : '';
-    if (hint) hint.textContent = `发现新版本 ${res.latest}（当前 ${res.current}）${notes}`;
-    pendingUpdateUrl = res.url || '';
+    if (hint) {
+      hint.textContent = `发现新版本 ${res.latest}（当前 ${res.current}）。点击「立即更新」将下载并自动重启到新版本。`;
+    }
+    renderUpdateNotes(res.notes);
+    pendingUpdateUrl = 'ready';
     pendingUpdateLatest = res.latest || '';
-    if (dlBtn && pendingUpdateUrl) {
+    if (dlBtn) {
       dlBtn.classList.remove('hidden');
       dlBtn.hidden = false;
     }
@@ -479,6 +520,7 @@ function applyUpdateCheckResult(res, { silent = false } = {}) {
     return true;
   }
   setUpdateBadge(false);
+  clearUpdateNotes();
   if (!silent && hint) {
     hint.textContent = `已是最新版本（${res.current || res.latest || ''}）`;
   }
@@ -500,6 +542,7 @@ async function fillAboutPanel() {
   const dlBtn = document.getElementById('downloadUpdateBtn');
   pendingUpdateUrl = '';
   pendingUpdateLatest = '';
+  clearUpdateNotes();
   if (dlBtn) {
     dlBtn.classList.add('hidden');
     dlBtn.hidden = true;
@@ -521,6 +564,7 @@ async function fillAboutPanel() {
       hint.textContent = ((res && res.error) || '自动检查失败') + '。可稍后点「检查更新」重试。';
     }
   } catch (err) {
+    clearUpdateNotes();
     if (hint) hint.textContent = ((err && err.message) || '自动检查失败') + '。可稍后点「检查更新」重试。';
   }
 }
@@ -529,11 +573,13 @@ document.getElementById('checkUpdateBtn')?.addEventListener('click', async () =>
   const btn = document.getElementById('checkUpdateBtn');
   const hint = document.getElementById('aboutUpdateHint');
   if (btn) btn.disabled = true;
+  clearUpdateNotes();
   if (hint) hint.textContent = '正在检查…';
   try {
     const res = await API.checkForUpdate();
     applyUpdateCheckResult(res, { silent: false });
   } catch (err) {
+    clearUpdateNotes();
     if (hint) hint.textContent = (err && err.message) || '检查失败';
   } finally {
     if (btn) btn.disabled = false;
@@ -541,39 +587,28 @@ document.getElementById('checkUpdateBtn')?.addEventListener('click', async () =>
 });
 
 document.getElementById('downloadUpdateBtn')?.addEventListener('click', async () => {
-  if (!pendingUpdateUrl) return;
   const btn = document.getElementById('downloadUpdateBtn');
   const checkBtn = document.getElementById('checkUpdateBtn');
   const hint = document.getElementById('aboutUpdateHint');
   if (btn) btn.disabled = true;
   if (checkBtn) checkBtn.disabled = true;
-  if (hint) hint.textContent = '正在下载…';
+  if (hint) hint.textContent = '正在下载更新…';
   const offProgress = API.onUpdateDownloadProgress?.((p) => {
     if (!hint || !p) return;
-    if (p.percent != null) hint.textContent = `正在下载… ${p.percent}%`;
-    else if (p.received) hint.textContent = `正在下载… ${(p.received / (1024 * 1024)).toFixed(1)} MB`;
+    if (p.percent != null) hint.textContent = `正在下载更新… ${p.percent}%`;
   });
   try {
-    const res = await API.downloadUpdate(pendingUpdateUrl, { latest: pendingUpdateLatest });
+    const res = await API.downloadUpdate();
     if (res && res.ok && res.applied) {
-      if (hint) {
-        hint.textContent = res.message || '已下载，即将打开新版本。请以后用桌面「任务看板」快捷方式启动。';
-      }
+      if (hint) hint.textContent = res.message || '下载完成，正在安装并重启…';
       setUpdateBadge(false);
       return;
     }
-    if (res && res.ok) {
-      if (hint) hint.textContent = res.message || `已下载到：${res.path}`;
-      setUpdateBadge(false);
-      if (btn) btn.disabled = false;
-      if (checkBtn) checkBtn.disabled = false;
-    } else if (hint) {
-      hint.textContent = (res && res.error) || '下载失败';
-      if (btn) btn.disabled = false;
-      if (checkBtn) checkBtn.disabled = false;
-    }
+    if (hint) hint.textContent = (res && (res.error || res.message)) || '更新失败';
+    if (btn) btn.disabled = false;
+    if (checkBtn) checkBtn.disabled = false;
   } catch (err) {
-    if (hint) hint.textContent = (err && err.message) || '下载失败';
+    if (hint) hint.textContent = (err && err.message) || '更新失败';
     if (btn) btn.disabled = false;
     if (checkBtn) checkBtn.disabled = false;
   } finally {

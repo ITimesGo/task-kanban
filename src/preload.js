@@ -63,7 +63,7 @@ contextBridge.exposeInMainWorld('taskAPI', {
   exportTasks: (options) => ipcRenderer.invoke('export:tasks', options),
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
   checkForUpdate: () => ipcRenderer.invoke('update:check'),
-  downloadUpdate: (url, meta) => ipcRenderer.invoke('update:download', url, meta || {}),
+  downloadUpdate: () => ipcRenderer.invoke('update:download'),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   onUpdateDownloadProgress: (cb) => {
     const handler = (_e, d) => cb(d);

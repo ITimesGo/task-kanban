@@ -11,10 +11,30 @@ asarUnpack:
   - node_modules/tesseract.js-core/**/*
 win:
   target:
-    - portable
-  icon: assets/icon.png
+    - nsis
+  # 自定义图标由 after-pack.js（resedit）写入 exe。
+  # 勿开 signAndEditExecutable：会拉 winCodeSign，解压需创建符号链接，普通用户常失败。
+  icon: assets/icon.ico
   signAndEditExecutable: false
 afterPack: ./after-pack.js
-portable:
-  # 用 ASCII 文件名：GitHub Release 上传中文名常被剥成「-1.0.x.exe」，导致检查更新 404
-  artifactName: "task-kanban-${version}.exe"
+nsis:
+  # 首次安装：可选手动选目录。应用内「立即更新」走静默覆盖，不会再问目录。
+  # allowElevation:false → 不为「所有用户/仅我」再弹一页（始终装当前用户）
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 任务看板
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+  installerHeaderIcon: assets/icon.ico
+  deleteAppDataOnUninstall: false
+  artifactName: "task-kanban-setup-${version}.exe"
+# 生成 latest.yml，供 electron-updater 从 GitHub Release 检查更新
+publish:
+  provider: github
+  owner: ITimesGo
+  repo: task-kanban
+  releaseType: release

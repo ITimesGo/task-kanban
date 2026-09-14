@@ -1,22 +1,27 @@
 {
   "name": "task-kanban",
   "productName": "任务看板",
-  "version": "1.1.5",
+  "version": "1.2.0",
   "description": "任务看板（桌面版）",
   "main": "src/main/main.js",
   "scripts": {
     "start": "node start.js",
     "dev": "node start.js",
     "test": "node --test",
-    "build": "electron-builder --win portable"
+    "gen:icon": "node scripts/gen-icon.mjs",
+    "build": "electron-builder --win nsis --publish never"
   },
   "devDependencies": {
     "electron": "^31.0.0",
     "electron-builder": "^24.13.0",
-    "electron-reload": "^2.0.0-alpha.1"
+    "electron-reload": "^2.0.0-alpha.1",
+    "png-to-ico": "^3.0.2",
+    "resedit": "^3.1.0",
+    "sharp": "^0.35.4"
   },
   "dependencies": {
     "adm-zip": "^0.6.0",
+    "electron-updater": "^6.8.9",
     "tesseract.js": "^5.1.1"
   }
 }

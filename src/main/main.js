@@ -1,7 +1,5 @@
 const { app, BrowserWindow, ipcMain, dialog, clipboard, protocol, net, globalShortcut, shell } = require('electron');
 const path = require('path');
-const os = require('os');
-const { spawn } = require('child_process');
 // 开发模式：监听 src 目录，渲染层文件（html/css/js）变化时自动刷新窗口
 if (!app.isPackaged) {
   require('electron-reload')(path.join(__dirname, '..'), {
@@ -24,16 +22,7 @@ const mediaLayout = require('./mediaLayout');
 const ocr = require('./ocr');
 const plugins = require('./plugins');
 const { normalizeMediaPayload } = require('../renderer/taskMedia');
-const {
-  UPDATE_FEED_URL,
-  evaluateUpdate,
-  buildSideBySideLaunchScript,
-  installDir,
-  writeCurrentPointer,
-  clearHandoff,
-  installExeName,
-  cleanupOldInstalls,
-} = require('./appUpdate');
+const { registerUpdateIpc } = require('./autoUpdate');
 
 // 自定义协议：taskimage://local/images/xxx.png -> 磁盘文件
 // 注意：scheme 注册为 standard，taskimage:// 后第一段是 host，故 URL 形如 taskimage://local/<rel>
@@ -475,6 +464,7 @@ function setupTagHandlers() {
 }
 
 function setupSettingsHandlers() {
+  registerUpdateIpc({ ipcHandle, getWin: () => win });
   // 返回当前存储路径
   ipcHandle('storage:get', () => APP_DATA);
 
@@ -599,34 +589,6 @@ function setupSettingsHandlers() {
     return { ok: true, changed: true, path: def };
   });
 
-  ipcHandle('app:getVersion', () => app.getVersion());
-
-  ipcHandle('update:check', async () => {
-    const current = app.getVersion();
-    try {
-      const res = await net.fetch(UPDATE_FEED_URL, {
-        method: 'GET',
-        headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
-      });
-      if (!res.ok) {
-        return { ok: false, error: `无法获取更新信息（HTTP ${res.status}）`, current };
-      }
-      let feed;
-      try {
-        feed = JSON.parse(await res.text());
-      } catch (_) {
-        return { ok: false, error: '更新信息格式错误', current };
-      }
-      const result = evaluateUpdate(current, feed);
-      if (result.status === 'invalid') {
-        return { ok: false, error: result.error || '更新信息不完整', current };
-      }
-      return { ok: true, current, ...result };
-    } catch (err) {
-      return { ok: false, error: (err && err.message) || '网络错误，请稍后重试', current };
-    }
-  });
-
   ipcHandle('shell:openExternal', async (_e, url) => {
     const u = String(url || '').trim();
     if (!/^https?:\/\//i.test(u)) return { ok: false, error: '无效链接' };
@@ -638,136 +600,6 @@ function setupSettingsHandlers() {
     }
   });
 
-  /**
-   * 侧载更新：下载到 %APPDATA%/任务看板/install/（带版本号的新文件），
-   * 退出后启动新文件，并在桌面创建「任务看板」快捷方式。
-   * 不再覆盖正在运行的 exe，从根源避免 EBUSY / 闪退。
-   */
-  ipcHandle('update:download', async (_e, url, meta = {}) => {
-    const u = String(url || '').trim();
-    if (!/^https?:\/\//i.test(u)) return { ok: false, error: '无效链接' };
-
-    const sendProgress = (payload) => {
-      if (win && !win.isDestroyed()) win.webContents.send('update:downloadProgress', payload);
-    };
-
-    if (!app.isPackaged) {
-      return { ok: false, error: '开发模式请直接跑源码；更新仅支持打包版。' };
-    }
-
-    const latest = String((meta && meta.latest) || '').trim();
-    const userData = app.getPath('userData');
-    const dir = installDir(userData);
-    try { fs.mkdirSync(dir, { recursive: true }); } catch (_) { /* ignore */ }
-
-    const dest = path.join(dir, installExeName(latest || app.getVersion(), u));
-
-    async function downloadTo(destPath) {
-      const res = await net.fetch(u, { method: 'GET' });
-      if (!res.ok) throw new Error(`下载失败（HTTP ${res.status}）`);
-      const total = Number(res.headers.get('content-length') || 0) || 0;
-      if (!res.body || typeof res.body.getReader !== 'function') {
-        const buf = Buffer.from(await res.arrayBuffer());
-        fs.writeFileSync(destPath, buf);
-        sendProgress({ received: buf.length, total: buf.length, percent: 100 });
-        return;
-      }
-      const reader = res.body.getReader();
-      const out = fs.createWriteStream(destPath);
-      let received = 0;
-      sendProgress({ received: 0, total, percent: total ? 0 : null });
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (!value || !value.length) continue;
-          const buf = Buffer.from(value);
-          received += buf.length;
-          if (!out.write(buf)) {
-            await new Promise((r) => out.once('drain', r));
-          }
-          const percent = total ? Math.min(100, Math.round((received / total) * 100)) : null;
-          sendProgress({ received, total, percent });
-        }
-        await new Promise((resolve, reject) => {
-          out.end(() => resolve());
-          out.on('error', reject);
-        });
-        sendProgress({ received, total: total || received, percent: 100 });
-      } catch (err) {
-        try { out.destroy(); } catch (_) { /* ignore */ }
-        throw err;
-      }
-    }
-
-    try {
-      await downloadTo(dest);
-    } catch (err) {
-      try { if (fs.existsSync(dest)) fs.unlinkSync(dest); } catch (_) { /* ignore */ }
-      return { ok: false, error: (err && err.message) || '下载失败' };
-    }
-
-    const getParentPid = (pid) => {
-      try {
-        const out = require('child_process').execFileSync(
-          'powershell.exe',
-          ['-NoProfile', '-Command', `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").ParentProcessId`],
-          { encoding: 'utf8', windowsHide: true, timeout: 8000 }
-        );
-        const n = parseInt(String(out).trim(), 10);
-        return Number.isFinite(n) && n > 0 ? n : 0;
-      } catch (_) {
-        return 0;
-      }
-    };
-
-    try {
-      clearHandoff(userData);
-      writeCurrentPointer(userData, {
-        version: latest || app.getVersion(),
-        exe: dest,
-        updatedAt: new Date().toISOString(),
-      });
-
-      const shortcutPath = path.join(app.getPath('desktop'), '任务看板.lnk');
-      const logPath = path.join(userData, 'update-install.log');
-      const parentPid = getParentPid(process.pid);
-      const scriptPath = path.join(os.tmpdir(), `kanban-launch-${Date.now()}.ps1`);
-      const script = buildSideBySideLaunchScript({
-        pid: process.pid,
-        parentPid,
-        newExePath: dest,
-        shortcutPath,
-        logPath,
-      });
-      fs.writeFileSync(scriptPath, '\uFEFF' + script, 'utf8');
-      spawn(
-        'powershell.exe',
-        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', scriptPath],
-        { detached: true, stdio: 'ignore', windowsHide: true }
-      ).unref();
-
-      setTimeout(() => {
-        try { app.quit(); } catch (_) { /* ignore */ }
-      }, 500);
-
-      return {
-        ok: true,
-        applied: true,
-        path: dest,
-        shortcutPath,
-        message: '已下载新版本，即将打开；请以后用桌面上的「任务看板」快捷方式启动。',
-      };
-    } catch (err) {
-      try { shell.showItemInFolder(dest); } catch (_) { /* ignore */ }
-      return {
-        ok: true,
-        applied: false,
-        path: dest,
-        message: `已下载到：${dest}。自动启动失败，请手动双击该文件。${(err && err.message) ? `（${err.message}）` : ''}`,
-      };
-    }
-  });
 }
 
 function notifyStorageChanged() {
@@ -924,12 +756,6 @@ app.whenReady().then(() => {
   setupWindowHandlers();
   setupOcrHandlers();
   setupPluginHandlers();
-  // 清理旧版「覆盖桌面 exe」方案残留，避免再弹「更新未完成」
-  try { clearHandoff(app.getPath('userData')); } catch (_) { /* ignore */ }
-  try {
-    const cur = require('./appUpdate').readCurrentPointer(app.getPath('userData'));
-    if (cur && cur.exe) cleanupOldInstalls(app.getPath('userData'), cur.exe);
-  } catch (_) { /* ignore */ }
   // 注册 F12 切换 DevTools（removeMenu 后默认快捷键会失效，故用全局快捷键）
   globalShortcut.register('F12', () => { win.webContents.toggleDevTools(); });
   globalShortcut.register('Ctrl+Shift+I', () => { win.webContents.toggleDevTools(); });

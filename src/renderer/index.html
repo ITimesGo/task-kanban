@@ -312,7 +312,11 @@
                 <button id="checkUpdateBtn" class="primary" type="button" style="background:var(--primary);color:var(--on-primary);border-color:var(--primary);">检查更新</button>
                 <button id="downloadUpdateBtn" type="button" class="hidden" hidden>立即更新</button>
               </div>
-              <p class="setting-hint" id="aboutUpdateHint" style="margin-top:12px">点击检查是否有新版本。更新会安装到本机应用目录，并在桌面生成「任务看板」快捷方式（不再覆盖正在运行的 exe）。</p>
+              <p class="setting-hint" id="aboutUpdateHint" style="margin-top:12px">点击检查是否有新版本。安装版支持一键更新：下载完成后会自动退出、安装并重新打开。</p>
+              <div id="aboutUpdateNotes" class="update-notes hidden" hidden>
+                <div class="update-notes-title">更新内容</div>
+                <ul id="aboutUpdateNotesList" class="update-notes-list"></ul>
+              </div>
             </div>
           </div>
         </div>
