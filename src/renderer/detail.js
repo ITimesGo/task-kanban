@@ -13,11 +13,21 @@ async function openDetail(t) {
   $('#detailOverlay').classList.remove('hidden');
 }
 
+function disposeEditEditor() {
+  const ed = window.editEditor;
+  window.editEditor = null;
+  window.applyClipboardToEdit = null;
+  if (ed && typeof ed.destroy === 'function') {
+    try { ed.destroy(); } catch (_) { /* ignore */ }
+  }
+}
+
 function updateOpenDetail() {
   if (detailState.mode === 'edit') {
+    disposeEditEditor();
     renderEditDetail();
   } else {
-    window.applyClipboardToEdit = null;
+    disposeEditEditor();
     if (typeof window.syncClipboardQuickTargetLabel === 'function') {
       window.syncClipboardQuickTargetLabel();
     }
@@ -45,8 +55,7 @@ function renderEditDetail() {
   if (metaEl) { metaEl.hidden = true; metaEl.innerHTML = ''; }
   ui.detailBody.innerHTML = `
     <div id="editDrop">
-      <textarea id="editText" rows="6">${ui.esc(editing.text)}</textarea>
-      <div id="editThumbs" class="thumbs"></div>
+      <div id="editEditor" class="rich-editor-host"></div>
       <div id="editTags" class="tag-select"></div>
       <div id="editAttachments" class="attachments"></div>
       <button id="editAddFile" class="icon-btn" title="添加附件" aria-label="添加附件"><svg class="att-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
@@ -55,8 +64,9 @@ function renderEditDetail() {
         <div class="up-bar"><div class="up-fill" id="editProgressFill"></div></div>
         <span class="up-text" id="editProgressText"></span>
       </div>
-      <p class="hint" style="margin-top:10px">支持拖入图片/视频或 Ctrl+V 粘贴；缩略图可拖动调整顺序（图片≤10MB×10；视频 mp4/webm/mov≤200MB×3）</p>
+      <p class="hint" style="margin-top:10px">支持拖入或 Ctrl+V 粘贴；工具栏可加粗/列表/插图</p>
     </div>`;
+
   const editTagIds = (editing.tags || []).slice();
   const drawEditTags = () => {
     const box = $('#editTags');
@@ -75,78 +85,59 @@ function renderEditDetail() {
     });
   };
   drawEditTags();
-  const currentMedia = taskMediaItems(editing).map((m) => ({ kind: m.kind, value: m.value }));
-  function editMediaCounts() {
-    let images = 0;
-    let videos = 0;
-    for (const m of currentMedia) {
-      if (m.kind === 'video') videos += 1;
-      else images += 1;
-    }
-    return { images, videos };
-  }
-  function drawEditThumbs() {
-    ui.renderNewThumbs({
-      el: document.getElementById('editThumbs'),
-      media: currentMedia,
-      onRemove: (i) => { currentMedia.splice(i, 1); drawEditThumbs(); },
-      onReorder: (from, to) => {
-        const next = moveMediaItem(currentMedia, from, to);
-        currentMedia.length = 0;
-        currentMedia.push(...next);
-        drawEditThumbs();
-      },
-      onPreview: window.showLightbox,
-    });
-  }
-  drawEditThumbs();
+
+  const editEditorHost = document.getElementById('editEditor');
+  let editEditor = null;
+  editEditor = createRichEditor(editEditorHost, {
+    placeholder: '编辑任务描述…',
+    onPickMedia: async () => {
+      const items = await API.pickMedia();
+      for (const it of items || []) {
+        if (!it) continue;
+        if (it.kind === 'video') {
+          if (!editEditor.insertMediaNode('video', { srcPath: it.srcPath })) break;
+        } else if (it.dataUrl) {
+          if (!editEditor.insertMediaNode('image', it.dataUrl)) break;
+        }
+      }
+    },
+  });
+  window.editEditor = editEditor;
+  editEditor.setDoc(resolveTaskDoc(editing));
+
   window.applyClipboardToEdit = (payload) => {
-    if (!payload || !payload.type) return false;
+    if (!payload || !payload.type || !editEditor) return false;
     if (payload.type === 'text') {
-      const ta = document.getElementById('editText');
-      if (!ta) return false;
       const chunk = String(payload.text || '');
       if (!chunk) return false;
-      if (ta.value && !/\n$/.test(ta.value)) ta.value += '\n';
-      ta.value += chunk;
-      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      editEditor.surface.focus();
+      try { document.execCommand('insertText', false, chunk); }
+      catch (_) { editEditor.surface.appendChild(document.createTextNode(chunk)); }
       return true;
     }
     if (payload.type === 'image' && payload.dataUrl) {
-      if (editMediaCounts().images >= 10) { alert('最多添加10张图片'); return false; }
-      currentMedia.push({ kind: 'image', value: payload.dataUrl });
-      drawEditThumbs();
-      return true;
+      return editEditor.insertMediaNode('image', payload.dataUrl);
     }
     return false;
   };
   if (typeof window.syncClipboardQuickTargetLabel === 'function') {
     window.syncClipboardQuickTargetLabel();
   }
-  function addImagesToEdit(dataUrls) {
-    for (const d of dataUrls || []) {
-      if (editMediaCounts().images >= 10) { alert('最多添加10张图片'); break; }
-      currentMedia.push({ kind: 'image', value: d });
+
+  _editPasteAdd = (items) => {
+    for (const d of items || []) {
+      if (!editEditor.insertMediaNode('image', d)) break;
     }
-    drawEditThumbs();
-  }
-  function addMediaToEdit(items) {
-    for (const it of items || []) {
-      if (!it) continue;
-      if (it.kind === 'video') {
-        if (editMediaCounts().videos >= 3) { alert('最多添加3个视频'); break; }
-        currentMedia.push({ kind: 'video', value: { srcPath: it.srcPath } });
-      } else if (it.dataUrl) {
-        if (editMediaCounts().images >= 10) { alert('最多添加10张图片'); break; }
-        currentMedia.push({ kind: 'image', value: it.dataUrl });
-      }
+  };
+
+  document.getElementById('editAdd').addEventListener('click', () => {
+    if (typeof editEditor === 'object' && editEditor) {
+      // onPickMedia already wired; trigger same
+      editEditor.surface.focus();
+      document.querySelector('#editEditor [data-cmd="image"]')?.click();
     }
-    drawEditThumbs();
-  }
-  _editPasteAdd = addImagesToEdit;
-  document.getElementById('editAdd').addEventListener('click', async () => {
-    addMediaToEdit(await API.pickMedia());
   });
+
   const editAttachments = (editing.attachments || []).map((a) => typeof a === 'string' ? a : a.rel);
   const drawEditAttachments = () => {
     const box = document.getElementById('editAttachments');
@@ -167,16 +158,12 @@ function renderEditDetail() {
     });
     drawEditAttachments();
   });
+
   const editDrop = $('#editDrop');
   const MAX_EDIT_MB = 10;
   editDrop.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isThumbReorderEvent(e)) {
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      editDrop.classList.remove('drag-over');
-      return;
-    }
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
     editDrop.classList.add('drag-over');
   });
@@ -188,25 +175,18 @@ function renderEditDetail() {
     e.preventDefault();
     e.stopPropagation();
     editDrop.classList.remove('drag-over');
-    if (isThumbReorderEvent(e)) return;
     const allFiles = [...(e.dataTransfer?.files || [])];
     if (!allFiles.length) return;
     for (const f of allFiles) {
       if (isImageFile(f)) {
         if (f.size > MAX_EDIT_MB * 1024 * 1024) { alert(`图片超过${MAX_EDIT_MB}MB`); continue; }
         const reader = new FileReader();
-        reader.onload = () => {
-          if (editMediaCounts().images >= 10) { alert('最多添加10张图片'); return; }
-          currentMedia.push({ kind: 'image', value: reader.result });
-          drawEditThumbs();
-        };
+        reader.onload = () => { editEditor.insertMediaNode('image', reader.result); };
         reader.readAsDataURL(f);
       } else if (isVideoFile(f)) {
         const v = resolveVideoDrop(f);
         if (!v) continue;
-        if (editMediaCounts().videos >= 3) { alert('最多添加3个视频'); continue; }
-        currentMedia.push({ kind: 'video', value: v });
-        drawEditThumbs();
+        editEditor.insertMediaNode('video', v);
       } else {
         const p = resolveAttachmentDrop(f);
         if (p) {
@@ -217,6 +197,7 @@ function renderEditDetail() {
       }
     }
   });
+
   ui.detailActions.innerHTML = `
     <span class="detail-footer-spacer"></span>
     <div class="detail-footer-right">
@@ -224,21 +205,25 @@ function renderEditDetail() {
       <button id="saveBtn" class="primary" type="button">保存</button>
     </div>`;
   document.getElementById('saveBtn').addEventListener('click', async () => {
-    const text = document.getElementById('editText').value;
+    const body = await editEditor.getPayload();
     const editAtts = editAttachments.map((a) => {
       const isRel = (editing.attachments || []).some((x) => (typeof x === 'string' ? x : x.rel) === a);
       return isRel ? a : { srcPath: a, name: a.split(/[\\/]/).pop() };
     });
-    const media = currentMedia.map((m) => ({
-      kind: m.kind === 'video' ? 'video' : 'image',
-      value: m.value,
-    }));
+    if (isTaskContentEmpty({ doc: body.doc, attachments: editAtts })) {
+      alert('请至少输入文字、图片、视频或附件');
+      return;
+    }
     const onProgress = (d) => updateUploadProgress('editProgress', d);
     const sub = API.onAttachmentProgress(onProgress);
     const newAtts = editAtts.filter((a) => typeof a !== 'string');
     if (newAtts.length) showUploadProgress('editProgress', newAtts.length);
     try {
-      const res = await API.updateTask(editing.id, { text, media, attachments: editAtts });
+      const res = await API.updateTask(editing.id, {
+        doc: body.doc,
+        pendingMedia: body.pendingMedia,
+        attachments: editAtts,
+      });
       if (!res.ok) { alert(res.error || '保存失败'); return; }
       await API.setTaskTags(editing.id, editTagIds);
     } finally {
@@ -266,7 +251,7 @@ async function deleteTask() {
   if (res && res.ok === false) { alert(res.error || '删除失败'); return; }
   $('#detailOverlay').classList.add('hidden');
   editing = null;
-  window.applyClipboardToEdit = null;
+  disposeEditEditor();
   if (typeof window.syncClipboardQuickTargetLabel === 'function') {
     window.syncClipboardQuickTargetLabel();
   }
@@ -276,14 +261,16 @@ async function deleteTask() {
 $('#detailOverlay').addEventListener('click', (e) => {
   if (e.target.id !== 'detailOverlay') return;
   $('#detailOverlay').classList.add('hidden');
-  window.applyClipboardToEdit = null;
+  disposeEditEditor();
+  if (detailState) detailState.mode = 'view';
   if (typeof window.syncClipboardQuickTargetLabel === 'function') {
     window.syncClipboardQuickTargetLabel();
   }
 });
 $('#detailClose').addEventListener('click', () => {
   $('#detailOverlay').classList.add('hidden');
-  window.applyClipboardToEdit = null;
+  disposeEditEditor();
+  if (detailState) detailState.mode = 'view';
   if (typeof window.syncClipboardQuickTargetLabel === 'function') {
     window.syncClipboardQuickTargetLabel();
   }
@@ -292,7 +279,9 @@ $('#detailClose').addEventListener('click', () => {
 let _editPasteAdd = null;
 bindContentPaste({
   getZone: () => (detailState.mode === 'edit' ? document.getElementById('editDrop') : null),
-  getTextarea: () => (detailState.mode === 'edit' ? document.getElementById('editText') : null),
+  getTextarea: () => (detailState.mode === 'edit' && window.editEditor
+    ? window.editEditor.surface
+    : null),
   addImages: (items) => { if (_editPasteAdd) _editPasteAdd(items); },
   maxMb: 10,
 });

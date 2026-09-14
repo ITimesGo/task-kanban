@@ -36,6 +36,24 @@ const ui = (() => {
     return `<div class="chips${detail ? ' chips--detail' : ''}">${chips}</div>`;
   }
 
+  const CLOCK_ICON = '<svg class="card-time-ico" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.35"/><path d="M8 5v3.2l2 1.2" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  /** 卡片时间：相对时间为主，完整时间在 title；与彩色标签同级但视觉类别不同 */
+  function cardTimeChip(iso, timeLabel) {
+    const tip = iso ? `${timeLabel}：${fmtTime(iso)}` : `${timeLabel}：—`;
+    const shown = iso ? (fmtRelative(iso) || fmtTimeShort(iso) || '—') : '—';
+    return `<span class="card-time${iso ? '' : ' is-empty'}" title="${esc(tip)}">${CLOCK_ICON}<span class="card-time-text">${esc(shown)}</span></span>`;
+  }
+
+  function cardMetaChips(t, timeField, timeLabel) {
+    const ids = (t.tags || []).filter((id) => tagMap[id]);
+    const tagHtml = ids.map((id) => {
+      const [fg, bg] = hashColor(id);
+      return `<span class="chip" style="color:${fg};background:${bg};border-color:${fg}47">${esc(tagMap[id])}</span>`;
+    }).join('');
+    return `<div class="chips chips--meta">${tagHtml}${cardTimeChip(t[timeField], timeLabel)}</div>`;
+  }
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -124,19 +142,6 @@ const ui = (() => {
       const card = document.createElement('div');
       card.className = 'card' + (t.status === 'done' ? ' done' : '');
       const done = t.status === 'done';
-      const media = API.taskMediaItems(t);
-      const thumbs = media.slice(0, 4).map((m) => {
-        const src = mediaSrc(m);
-        if (m.kind === 'video') {
-          return `<span class="thumb-wrap is-video"><video class="thumb" data-video-src="${esc(src)}" src="${esc(src)}" muted preload="metadata" playsinline></video>${PLAY_BADGE}</span>`;
-        }
-        return `<img class="thumb" loading="lazy" src="${esc(src)}">`;
-      }).join('');
-      const more = media.length > 4 ? `<span class="thumb-more">+${media.length - 4}</span>` : '';
-      const thumbWrap = media.length
-        ? `<div class="thumbs-row">${thumbs}${more}</div>`
-        : '';
-      // 附件：卡片上显示回形针图标 + 文件名，与标签区分
       const atts = (t.attachments || []).map((a) => {
         const rel = typeof a === 'string' ? a : a.rel;
         const name = rel ? rel.split('/').pop() : (typeof a === 'object' && a.name) || '';
@@ -146,26 +151,22 @@ const ui = (() => {
       const matchRow = matchHintHtml(matchById && t.id != null ? matchById[t.id] : null);
       const ocrRow = cardOcrProgressHtml(t.id);
       const tv = t[timeField];
-      const timeText = tv ? `${esc(timeLabel)} ${fmtTime(tv)}` : `${esc(timeLabel)} —`;
       card.dataset.taskId = t.id;
       card.innerHTML = `
         <button class="check${done ? ' done' : ''}" title="${done ? '取消完成' : '标记完成'}">${done ? '✓' : ''}</button>
         <div class="card-main">
           <div class="card-title">
-            <div class="text">${esc(t.text) || '<span class="muted">（无文字）</span>'}</div>
-            <div class="time">${timeText}</div>
+            ${typeof cardDocPreviewHtml === 'function' ? cardDocPreviewHtml(t) : `<div class="text">${esc(t.text) || '<span class="muted">（无文字）</span>'}</div>`}
           </div>
           ${matchRow}
-          ${thumbWrap}
           ${attRow}
-          ${tagChips(t)}
+          ${cardMetaChips(t, timeField, timeLabel)}
           ${ocrRow}
         </div>`;
       card.querySelector('.check').addEventListener('click', (e) => { e.stopPropagation(); onQuickToggle(t); });
       card.addEventListener('click', () => onOpen(t));
       cardsEl.appendChild(card);
     }
-    hydrateVideoThumbs(cardsEl);
   }
 
   function cardOcrProgressHtml(taskId) {
@@ -369,9 +370,10 @@ const ui = (() => {
 
   function renderDetail(t) {
     const done = t.status === 'done';
-    // 顶栏一体：状态 + 时间信息；正文/图/附件可滚
+    // 主栏：状态 + 标签；时间栏独立不变
+    const tagsHtml = tagChips(t, { detail: true });
     document.getElementById('detailHead').innerHTML =
-      `<span class="status-badge ${done ? 'done' : 'pending'}">${done ? '已执行' : '待执行'}</span>`;
+      `<span class="status-badge ${done ? 'done' : 'pending'}">${done ? '已执行' : '待执行'}</span>${tagsHtml}`;
     const metaEl = document.getElementById('detailMeta');
     metaEl.hidden = false;
     metaEl.innerHTML = `
@@ -393,37 +395,32 @@ const ui = (() => {
        </div>`;
     }).join('');
     detailBody.innerHTML = `
-      <div class="text">${esc(t.text) || '<span class="muted">（无文字）</span>'}</div>
-      ${tagChips(t, { detail: true })}
-      ${(() => {
-        const media = API.taskMediaItems(t);
-        if (!media.length) return '';
-        return `<div class="detail-img-list">${media.map((m) => {
-          const src = mediaSrc(m);
-          if (m.kind === 'video') {
-            return `<div class="detail-media is-video" data-src="${esc(src)}">
-              <video class="detail-video" src="${esc(src)}" controls playsinline preload="metadata"></video>
-              <button type="button" class="detail-video-expand" data-src="${esc(src)}" title="全屏预览">全屏</button>
-            </div>`;
-          }
-          return `<img class="detail-img" data-src="${esc(src)}" data-type="image" src="${esc(src)}" alt="">`;
-        }).join('')}</div>`;
-      })()}
+      ${typeof detailDocHtml === 'function' ? detailDocHtml(t) : `<div class="text">${esc(t.text) || '<span class="muted">（无文字）</span>'}</div>`}
       ${atts ? `
         <section class="att-section">
           <header class="att-head"><h3>附件</h3><span class="att-count">${(t.attachments || []).length}</span></header>
           <div class="att-list">${atts}</div>
         </section>`
       : ''}`;
-    detailBody.querySelectorAll('.detail-img[data-type="image"], img.detail-img').forEach((im) => {
-      if (im.closest('.detail-media')) return;
-      im.addEventListener('click', () => window.showLightbox(im.dataset.src || im.src, { type: 'image' }));
+    detailBody.querySelectorAll('.doc-view img, .doc-image img').forEach((im) => {
+      im.addEventListener('click', () => {
+        const fig = im.closest('[data-src]');
+        const raw = (fig && fig.getAttribute('data-src')) || im.src;
+        const src = raw && !String(raw).startsWith('pending:')
+          ? (API.imageUrl && !/^https?:|data:|taskimage:/i.test(raw) ? API.imageUrl(raw) : raw)
+          : im.src;
+        window.showLightbox(src, { type: 'image' });
+      });
     });
-    detailBody.querySelectorAll('.detail-video-expand').forEach((btn) => {
-      btn.addEventListener('click', () => window.showLightbox(btn.dataset.src, { type: 'video' }));
-    });
-    detailBody.querySelectorAll('video.detail-video').forEach((vid) => {
-      // 截首帧作 poster，避免灰底
+    detailBody.querySelectorAll('.doc-video').forEach((fig) => {
+      const vid = fig.querySelector('video');
+      if (!vid) return;
+      const syncAspect = () => {
+        if (!vid.videoWidth || !vid.videoHeight) return;
+        vid.style.aspectRatio = vid.videoWidth + ' / ' + vid.videoHeight;
+      };
+      if (vid.videoWidth) syncAspect();
+      else vid.addEventListener('loadedmetadata', syncAspect, { once: true });
       if (typeof captureVideoPoster === 'function') {
         captureVideoPoster(vid.currentSrc || vid.src).then((poster) => {
           if (poster) vid.setAttribute('poster', poster);

@@ -1129,7 +1129,21 @@ async function renderTrashList() {
     return;
   }
   box.innerHTML = list.map((t) => {
-    const title = (t.text || '').trim() || '（无文字）';
+    const title = (() => {
+      if (typeof resolveTaskDoc === 'function' && typeof extractPlainText === 'function') {
+        const plain = extractPlainText(resolveTaskDoc(t)).trim();
+        if (plain) return plain;
+      }
+      const legacy = (t.text || '').trim();
+      if (legacy) return legacy;
+      if (typeof countMediaInDoc === 'function' && typeof resolveTaskDoc === 'function') {
+        const c = countMediaInDoc(resolveTaskDoc(t));
+        if (c.images || c.videos) return '（仅媒体）';
+      } else if ((t.images && t.images.length) || (t.videos && t.videos.length) || (t.media && t.media.length)) {
+        return '（仅媒体）';
+      }
+      return '（无文字）';
+    })();
     const preview = title.length > 40 ? title.slice(0, 40) + '…' : title;
     const when = t.trashedAt
       ? new Date(t.trashedAt).toLocaleString('zh-CN', { hour12: false })

@@ -1,18 +1,30 @@
+let createEditor = null;
+
 function updateCreateBtnState() {
-  const hasContent = $('#newText').value.trim() || newMedia.length > 0 || newAttachments.length > 0;
-  $('#createBtn').disabled = !hasContent;
+  const empty = createEditor
+    ? createEditor.isEmpty(newAttachments)
+    : !(newAttachments.length);
+  $('#createBtn').disabled = empty;
 }
 
 function renderNewTagSelect() {
   const box = $('#createTags');
+  const side = document.getElementById('createSide');
+  if (!box) return;
   if (!tagList.length) {
-    box.innerHTML = '<span class="hint">尚无标签，点击“管理标签”创建</span>';
+    box.innerHTML = '<span class="hint">尚无标签，点击下方标签图标管理</span>';
+    if (side) side.classList.toggle('is-expanded', false);
     return;
   }
-  const LIMIT = 10;
-  const showExpand = tagList.length > LIMIT;
-  let shown = tagList;
-  if (showExpand && !newTagExpanded) shown = tagList.slice(0, LIMIT);
+  const LIMIT = 6;
+  const ordered = tagList.slice().sort((a, b) => {
+    const ao = newTags.includes(a.id) ? 0 : 1;
+    const bo = newTags.includes(b.id) ? 0 : 1;
+    return ao - bo;
+  });
+  const showExpand = ordered.length > LIMIT;
+  let shown = ordered;
+  if (showExpand && !newTagExpanded) shown = ordered.slice(0, LIMIT);
   box.innerHTML = shown.map((t) =>
     `<button type="button" class="tag-pick ${newTags.includes(t.id) ? 'on' : ''}" data-id="${t.id}">${ui.esc(t.name)}</button>`
   ).join('');
@@ -20,9 +32,10 @@ function renderNewTagSelect() {
     const more = document.createElement('button');
     more.type = 'button';
     more.className = 'tag-expand';
-    more.textContent = newTagExpanded ? '收起' : `展开全部 (${tagList.length})`;
+    more.textContent = newTagExpanded ? '收起' : `更多 (${ordered.length - LIMIT})`;
     box.appendChild(more);
   }
+  if (side) side.classList.toggle('is-expanded', !!newTagExpanded);
   box.querySelectorAll('.tag-pick').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.dataset.id;
@@ -38,36 +51,14 @@ function renderNewTagSelect() {
   });
 }
 
-function renderThumbs() {
-  ui.renderNewThumbs({
-    media: newMedia,
-    onRemove: (i) => { newMedia.splice(i, 1); renderThumbs(); },
-    onReorder: (from, to) => {
-      newMedia = moveMediaItem(newMedia, from, to);
-      renderThumbs();
-    },
-    onPreview: window.showLightbox,
-  });
-  updateCreateBtnState();
-}
-
-function canAddImage() {
-  return newMediaCounts().images < MAX_NEW_IMAGES;
-}
-function canAddVideo() {
-  return newMediaCounts().videos < MAX_NEW_VIDEOS;
-}
-
 function addImageToCreate(value) {
-  if (!canAddImage()) { alert('最多添加10张图片'); return false; }
-  newMedia.push({ kind: 'image', value });
-  return true;
+  if (!createEditor) return false;
+  return createEditor.insertMediaNode('image', value);
 }
 
 function addVideoToCreate(value) {
-  if (!canAddVideo()) { alert('最多添加3个视频'); return false; }
-  newMedia.push({ kind: 'video', value });
-  return true;
+  if (!createEditor) return false;
+  return createEditor.insertMediaNode('video', value);
 }
 
 function renderNewAttachments() {
@@ -104,7 +95,7 @@ window.onAddImage = async () => {
       if (!addImageToCreate(it.dataUrl)) break;
     }
   }
-  renderThumbs();
+  updateCreateBtnState();
 };
 
 async function createTask() {
@@ -113,23 +104,23 @@ async function createTask() {
   const sub = API.onAttachmentProgress(onProgress);
   if (atts.length) showUploadProgress('createProgress', atts.length);
   try {
-    const media = [];
-    for (const m of newMedia) {
-      media.push({ kind: m.kind === 'video' ? 'video' : 'image', value: m.value });
+    const body = await createEditor.getPayload();
+    if (isTaskContentEmpty({ doc: body.doc, attachments: atts })) {
+      alert('请至少输入文字、图片、视频或附件');
+      return;
     }
     const res = await API.createTask({
-      text: $('#newText').value,
-      media,
+      doc: body.doc,
+      pendingMedia: body.pendingMedia,
       attachments: atts,
       tags: newTags.slice(),
     });
     if (!res.ok) { alert(res.error || '创建失败'); return; }
     if (newTags.length) await API.setTaskTags(res.task.id, newTags);
-    $('#newText').value = '';
+    createEditor.clear();
     newMedia = [];
     newTags = [];
     newAttachments = [];
-    renderThumbs();
     renderNewAttachments();
     renderNewTagSelect();
     updateCreateBtnState();
@@ -140,9 +131,20 @@ async function createTask() {
   if (typeof sub === 'function') sub();
 }
 
-document.getElementById('addImageBtn').addEventListener('click', window.onAddImage);
+(function initCreateEditor() {
+  const host = document.getElementById('createEditor');
+  if (!host || typeof createRichEditor !== 'function') return;
+  createEditor = createRichEditor(host, {
+    placeholder: '输入任务描述，可插入图片…',
+    onChange: updateCreateBtnState,
+    onPickMedia: () => window.onAddImage(),
+  });
+  window.createEditor = createEditor;
+})();
+
+const addImageBtn = document.getElementById('addImageBtn');
+if (addImageBtn) addImageBtn.addEventListener('click', window.onAddImage);
 document.getElementById('createBtn').addEventListener('click', createTask);
-$('#newText').addEventListener('input', updateCreateBtnState);
 updateCreateBtnState();
 
 const createPanel = document.getElementById('createPanel');
@@ -150,11 +152,6 @@ const MAX_IMG_MB = 10;
 createPanel.addEventListener('dragover', (e) => {
   e.preventDefault();
   e.stopPropagation();
-  if (isThumbReorderEvent(e)) {
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    createPanel.classList.remove('drag-over');
-    return;
-  }
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
   createPanel.classList.add('drag-over');
 });
@@ -166,7 +163,6 @@ createPanel.addEventListener('drop', (e) => {
   e.preventDefault();
   e.stopPropagation();
   createPanel.classList.remove('drag-over');
-  if (isThumbReorderEvent(e)) return;
   const files = [...(e.dataTransfer?.files || [])];
   if (!files.length) return;
   let added = 0;
@@ -176,7 +172,7 @@ createPanel.addEventListener('drop', (e) => {
       const reader = new FileReader();
       reader.onload = () => {
         if (!addImageToCreate(reader.result)) return;
-        renderThumbs();
+        updateCreateBtnState();
       };
       reader.readAsDataURL(f);
       added += 1;
@@ -185,7 +181,7 @@ createPanel.addEventListener('drop', (e) => {
       if (!v) continue;
       if (!addVideoToCreate(v)) continue;
       added += 1;
-      renderThumbs();
+      updateCreateBtnState();
     } else {
       const p = resolveAttachmentDrop(f);
       if (p) {
@@ -199,22 +195,19 @@ createPanel.addEventListener('drop', (e) => {
   }
 });
 
-function addPastedImages(items) {
-  for (const item of items) {
-    if (!addImageToCreate(item)) break;
-  }
-  renderThumbs();
-}
-
 bindContentPaste({
   getZone: () => document.getElementById('createPanel'),
-  getTextarea: () => document.getElementById('newText'),
-  addImages: (items) => addPastedImages(items),
+  getTextarea: () => (createEditor && createEditor.surface) || null,
+  addImages: (items) => {
+    for (const item of items) {
+      if (!addImageToCreate(item)) break;
+    }
+    updateCreateBtnState();
+  },
   onTextChange: updateCreateBtnState,
   maxMb: MAX_IMG_MB,
 });
 
-/** 剪贴板快贴插件：编辑中优先写入编辑区，否则写入新建区 */
 window.applyClipboardQuick = (payload) => {
   if (!payload || !payload.type) return false;
   const overlay = document.getElementById('detailOverlay');
@@ -226,17 +219,18 @@ window.applyClipboardQuick = (payload) => {
     return window.applyClipboardToEdit(payload);
   }
   if (payload.type === 'text') {
-    const ta = document.getElementById('newText');
-    if (!ta) return false;
+    if (!createEditor || !createEditor.surface) return false;
     const chunk = String(payload.text || '');
     if (!chunk) return false;
-    if (ta.value && !/\n$/.test(ta.value)) ta.value += '\n';
-    ta.value += chunk;
-    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    createEditor.surface.focus();
+    try { document.execCommand('insertText', false, chunk); }
+    catch (_) {
+      createEditor.surface.appendChild(document.createTextNode(chunk));
+    }
     updateCreateBtnState();
   } else if (payload.type === 'image' && payload.dataUrl) {
     if (!addImageToCreate(payload.dataUrl)) return false;
-    renderThumbs();
+    updateCreateBtnState();
   } else {
     return false;
   }

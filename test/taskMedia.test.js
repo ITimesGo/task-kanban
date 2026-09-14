@@ -143,3 +143,32 @@ test('moveMediaForTask 同步改写 media.rel', () => {
   assert.equal(moved.media[1].rel, 'images/工作_aaaaaaaa/abc_0.png');
   assert.equal(moved.media[0].kind, 'video');
 });
+
+test('moveMediaForTask 同步改写 doc 内 media src', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kanban-media-doc-'));
+  const s = new FileStore(dir);
+  const tid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+  s.saveTags([{ id: tid, name: '工作' }]);
+  fs.mkdirSync(path.join(dir, 'images'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'images', 'abc_0.png'), 'IMG');
+  const moved = s.moveMediaForTask(
+    {
+      id: 'abc',
+      tags: [tid],
+      images: ['images/abc_0.png'],
+      videos: [],
+      media: [{ kind: 'image', rel: 'images/abc_0.png' }],
+      attachments: [],
+      doc: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: '图' }] },
+          { type: 'image', attrs: { src: 'images/abc_0.png', alt: '' } },
+        ],
+      },
+    },
+    s.loadTags()
+  );
+  assert.equal(moved.doc.content[1].attrs.src, 'images/工作_aaaaaaaa/abc_0.png');
+  assert.equal(moved.images[0], 'images/工作_aaaaaaaa/abc_0.png');
+});

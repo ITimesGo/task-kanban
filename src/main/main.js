@@ -22,6 +22,7 @@ const mediaLayout = require('./mediaLayout');
 const ocr = require('./ocr');
 const plugins = require('./plugins');
 const { normalizeMediaPayload } = require('../renderer/taskMedia');
+const taskDoc = require('../renderer/taskDoc');
 const { registerUpdateIpc } = require('./autoUpdate');
 
 // 自定义协议：taskimage://local/images/xxx.png -> 磁盘文件
@@ -137,20 +138,107 @@ function ingestOrderedMedia(fsStore, items, taskId, tagOpts, { existingImages = 
   return { images, videos, media };
 }
 
+/** 若 payload 含有效 doc：ingest pendingMedia，重写 src，派生 text/media */
+function resolveDocBody(fsStore, taskId, tagOpts, payload, existing = {}) {
+  if (!payload || !taskDoc.isValidDoc(payload.doc)) return null;
+  let existingImages = (existing.images || []).slice();
+  let existingVideos = (existing.videos || []).slice();
+  const pending = Array.isArray(payload.pendingMedia) ? payload.pendingMedia : [];
+  const relByPending = {};
+  for (let i = 0; i < pending.length; i++) {
+    const item = pending[i];
+    if (!item) continue;
+    const kind = item.kind === 'video' ? 'video' : 'image';
+    const one = ingestOrderedMedia(
+      fsStore,
+      [{ kind, value: item.value }],
+      taskId,
+      tagOpts,
+      { existingImages, existingVideos }
+    );
+    const rel = one.media[0] && one.media[0].rel;
+    if (rel == null) continue;
+    relByPending[i] = rel;
+    if (kind === 'video') existingVideos.push(rel);
+    else existingImages.push(rel);
+  }
+  const doc = taskDoc.rewritePendingSrcs(payload.doc, relByPending);
+  if (taskDoc.hasUnresolvedPendingSrcs(doc)) {
+    const err = new Error('部分图片或视频未能保存，请重试');
+    err.code = 'PENDING_MEDIA';
+    throw err;
+  }
+  if (taskDoc.isTaskContentEmpty({ doc, attachments: payload.attachments || [] })) {
+    const err = new Error('请至少输入文字、图片、视频或附件');
+    err.code = 'EMPTY_TASK';
+    throw err;
+  }
+  const derived = taskDoc.deriveFieldsFromDoc(doc);
+  return { doc, text: derived.text, images: derived.images, videos: derived.videos, media: derived.media };
+}
+
 function setupStoreHandlers() {
   ipcHandle('tasks:getAll', () => fsStore.loadTasks());
   ipcHandle('tasks:create', async (event, payload) => {
     try {
-      const { text, attachments, tags: tagIds } = payload || {};
+      const { attachments, tags: tagIds } = payload || {};
       const tagOpts = { tags: tagIds || [] };
+      const tasks = fsStore.loadTasks();
+
+      if (payload && taskDoc.isValidDoc(payload.doc)) {
+        const draftTask = {
+          id: require('crypto').randomUUID(),
+          text: '',
+          images: [],
+          videos: [],
+          attachments: (attachments || []).slice(0, store.MAX_ATTACHMENTS),
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          statusAt: null,
+        };
+        const body = resolveDocBody(fsStore, draftTask.id, tagOpts, payload, {});
+        Object.assign(draftTask, {
+          text: body.text,
+          images: body.images,
+          videos: body.videos,
+          media: body.media,
+          doc: body.doc,
+        });
+        const atts = [];
+        const attList = attachments || [];
+        for (let i = 0; i < attList.length; i++) {
+          const a = attList[i];
+          const done = await fsStore.copyAttachmentAsync(a.srcPath, draftTask.id, a.name, (pct) => {
+            try { event.sender.send('attach:progress', { job: 'create', index: i, count: attList.length, pct }); } catch (_) {}
+          }, tagOpts);
+          atts.push(done);
+        }
+        const final = { ...draftTask, attachments: atts, tags: tagIds || [] };
+        fsStore.saveTasks([...tasks, final]);
+        try {
+          if (plugins.isEnabled('ocr-search') && plugins.assertOcrReady().ok) {
+            plugins.ocrIndex.scheduleIndexRels(APP_DATA, final.images || [], {
+              taskId: final.id,
+              onDone: () => {
+                try {
+                  if (win && !win.isDestroyed()) win.webContents.send('ocrIndex:updated');
+                } catch (_) { /* ignore */ }
+              },
+            });
+          }
+        } catch (_) { /* ignore */ }
+        return { ok: true, task: final };
+      }
+
       const mediaItems = normalizeMediaPayload(payload || {});
+      const text = payload && payload.text;
       const task = store.createTask({
         text,
         images: mediaItems.filter((m) => m.kind !== 'video').map((m) => m.value),
         videos: mediaItems.filter((m) => m.kind === 'video').map((m) => m.value),
         attachments: attachments || [],
       });
-      const tasks = fsStore.loadTasks();
       const ingested = ingestOrderedMedia(fsStore, mediaItems, task.id, tagOpts);
       const rels = ingested.images;
       const atts = [];
@@ -195,30 +283,50 @@ function setupStoreHandlers() {
   });
   ipcHandle('tasks:update', async (event, id, payload) => {
     try {
-      const { text, attachments } = payload || {};
+      const { attachments } = payload || {};
       const tasks = fsStore.loadTasks();
       const old = tasks.find((t) => t.id === id);
       if (!old) return { ok: false, error: '任务不存在' };
       const tagOpts = { tags: old.tags || [] };
       const existingRels = old.images || [];
       const existingVideos = old.videos || [];
-      const mediaItems = normalizeMediaPayload({
-        media: payload && payload.media,
-        images: payload && payload.images !== undefined ? payload.images : existingRels,
-        videos: payload && payload.videos !== undefined ? payload.videos : existingVideos,
-      });
-      const ingested = ingestOrderedMedia(fsStore, mediaItems, id, tagOpts, {
-        existingImages: existingRels,
-        existingVideos,
-      });
-      const rels = ingested.images;
-      const videoRels = ingested.videos;
+
+      let text = payload && payload.text;
+      let rels;
+      let videoRels;
+      let mediaArr;
+      let docFinal;
+
+      if (payload && taskDoc.isValidDoc(payload.doc)) {
+        const body = resolveDocBody(fsStore, id, tagOpts, payload, {
+          images: existingRels,
+          videos: existingVideos,
+        });
+        text = body.text;
+        rels = body.images;
+        videoRels = body.videos;
+        mediaArr = body.media;
+        docFinal = body.doc;
+      } else {
+        const mediaItems = normalizeMediaPayload({
+          media: payload && payload.media,
+          images: payload && payload.images !== undefined ? payload.images : existingRels,
+          videos: payload && payload.videos !== undefined ? payload.videos : existingVideos,
+        });
+        const ingested = ingestOrderedMedia(fsStore, mediaItems, id, tagOpts, {
+          existingImages: existingRels,
+          existingVideos,
+        });
+        rels = ingested.images;
+        videoRels = ingested.videos;
+        mediaArr = ingested.media;
+      }
+
       const removed = existingRels.filter((r) => !rels.includes(r));
       fsStore.deleteImages(removed);
       const removedVids = existingVideos.filter((r) => !videoRels.includes(r));
       fsStore.deleteVideos(removedVids);
 
-      // 附件：新增项 {srcPath,name} 拷贝入 attachments/，已存在的 rel 保留
       const oldAtts = old.attachments || [];
       const atts = [];
       const attList = attachments || [];
@@ -226,7 +334,6 @@ function setupStoreHandlers() {
       for (let i = 0; i < attList.length; i++) {
         const a = attList[i];
         if (typeof a === 'string') { atts.push(a); continue; }
-        // 详情里保留项有时是 {name,rel} 对象
         if (a && a.rel && !a.srcPath) { atts.push(a); continue; }
         const idx = newItems.indexOf(a);
         const done = await fsStore.copyAttachmentAsync(a.srcPath, id, a.name, (pct) => {
@@ -234,23 +341,22 @@ function setupStoreHandlers() {
         }, tagOpts);
         atts.push(done);
       }
-      // oldAtts 内为 {name,rel} 对象，atts 内混合保留的字符串 rel 与新增对象；
-      // 按 rel 判断哪些旧附件被移除，从而删除对应文件
       const attRel = (a) => (typeof a === 'string' ? a : (a && a.rel));
       const keptRels = atts.map(attRel).filter(Boolean);
       const removedAtts = oldAtts.filter((a) => !keptRels.includes(attRel(a)));
       fsStore.deleteAttachments(removedAtts);
-      const updated = store.updateTask(tasks, id, {
+      const patch = {
         text,
         images: rels,
         videos: videoRels,
-        media: ingested.media,
+        media: mediaArr,
         attachments: atts,
-      });
+      };
+      if (docFinal) patch.doc = docFinal;
+      const updated = store.updateTask(tasks, id, patch);
       fsStore.saveTasks(updated);
       try {
         if (plugins.isEnabled('ocr-search') && plugins.assertOcrReady().ok) {
-          // 删除的图片清索引；新增/未入库的后台识别
           for (const r of removed) {
             try { plugins.ocrIndex.remove(r); } catch (_) { /* ignore */ }
           }

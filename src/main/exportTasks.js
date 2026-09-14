@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const images = require('./images');
+const taskDoc = require('../renderer/taskDoc');
 
 const STATUS_LABEL = { pending: '待执行', done: '已执行' };
 const SORT_LABEL = {
@@ -51,6 +52,133 @@ function imageRels(task) {
     if (typeof item === 'string') return item;
     return item.rel || null;
   }).filter(Boolean);
+}
+
+/** 导出用图片：优先 doc 文档序，仅 image，跳过 video / pending */
+function exportImageRels(task) {
+  const doc = taskDoc.resolveTaskDoc(task);
+  if (taskDoc.isValidDoc(task && task.doc)) {
+    return taskDoc.extractMedia(doc)
+      .filter((m) => m && m.kind === 'image')
+      .map((m) => m.rel)
+      .filter((rel) => rel && !String(rel).startsWith(taskDoc.PENDING_PREFIX));
+  }
+  return imageRels(task);
+}
+
+function exportPlainText(task) {
+  const doc = taskDoc.resolveTaskDoc(task);
+  const plain = taskDoc.extractPlainText(doc).trim();
+  if (plain) return plain;
+  const legacy = String((task && task.text) || '').trim();
+  return legacy || '（无文字）';
+}
+
+function inlineExportHtml(nodes) {
+  let html = '';
+  for (const n of nodes || []) {
+    if (!n) continue;
+    if (n.type === 'hardBreak') { html += '<br>'; continue; }
+    if (n.type === 'text') {
+      let t = esc(n.text);
+      for (const m of n.marks || []) {
+        if (!m || !m.type) continue;
+        if (m.type === 'bold') t = `<strong>${t}</strong>`;
+        else if (m.type === 'italic') t = `<em>${t}</em>`;
+      }
+      html += t;
+    }
+  }
+  return html;
+}
+
+function docNodeExportHtml(node, imgMap) {
+  if (!node) return '';
+  if (node.type === 'paragraph') {
+    const inner = inlineExportHtml(node.content);
+    return `<p>${inner || '<br>'}</p>`;
+  }
+  if (node.type === 'bulletList') {
+    return `<ul>${(node.content || []).map((c) => docNodeExportHtml(c, imgMap)).join('')}</ul>`;
+  }
+  if (node.type === 'orderedList') {
+    return `<ol>${(node.content || []).map((c) => docNodeExportHtml(c, imgMap)).join('')}</ol>`;
+  }
+  if (node.type === 'listItem') {
+    return `<li>${(node.content || []).map((c) => docNodeExportHtml(c, imgMap)).join('')}</li>`;
+  }
+  if (node.type === 'image') {
+    const rel = node.attrs && node.attrs.src;
+    const dataUrl = rel && imgMap ? imgMap[rel] : null;
+    if (dataUrl) return `<img src="${dataUrl}" alt="">`;
+    return '';
+  }
+  if (node.type === 'video') return ''; // 导出不含视频
+  return '';
+}
+
+function docToExportHtml(doc, imgMap) {
+  if (!taskDoc.isValidDoc(doc)) return '';
+  return (doc.content || []).map((n) => docNodeExportHtml(n, imgMap)).join('');
+}
+
+function inlineExportMd(nodes) {
+  let out = '';
+  for (const n of nodes || []) {
+    if (!n) continue;
+    if (n.type === 'hardBreak') { out += '\n'; continue; }
+    if (n.type === 'text') {
+      let t = String(n.text || '');
+      const marks = (n.marks || []).map((m) => m && m.type);
+      if (marks.includes('bold')) t = `**${t}**`;
+      if (marks.includes('italic')) t = `*${t}*`;
+      out += t;
+    }
+  }
+  return out;
+}
+
+function docToExportMarkdown(doc, assetNamesByRel) {
+  if (!taskDoc.isValidDoc(doc)) return '';
+  const lines = [];
+  function walk(node, listPrefix) {
+    if (!node) return;
+    if (node.type === 'paragraph') {
+      lines.push(inlineExportMd(node.content));
+      lines.push('');
+      return;
+    }
+    if (node.type === 'bulletList' || node.type === 'orderedList') {
+      const ordered = node.type === 'orderedList';
+      (node.content || []).forEach((li, i) => {
+        const prefix = ordered ? `${i + 1}. ` : '- ';
+        const bits = [];
+        for (const c of li.content || []) {
+          if (c.type === 'paragraph') bits.push(inlineExportMd(c.content));
+          else if (c.type === 'image') {
+            const rel = c.attrs && c.attrs.src;
+            const name = rel && assetNamesByRel ? assetNamesByRel[rel] : null;
+            if (name) bits.push(`![](${name})`);
+          }
+        }
+        lines.push(prefix + (bits.join(' ') || ''));
+      });
+      lines.push('');
+      return;
+    }
+    if (node.type === 'image') {
+      const rel = node.attrs && node.attrs.src;
+      const name = rel && assetNamesByRel ? assetNamesByRel[rel] : null;
+      if (name) {
+        lines.push(`![](${name})`);
+        lines.push('');
+      }
+      return;
+    }
+    // skip video and unknown
+  }
+  for (const n of doc.content || []) walk(n);
+  return lines.join('\n').replace(/\n+$/, '');
 }
 
 /** 筛选 + 按时间倒序 */
@@ -116,15 +244,26 @@ function buildDocumentModel(tasks, tags, options, appDataDir) {
   const summary = filtersSummary(options, tagMap);
   const items = tasks.map((t, idx) => {
     const names = taskTagNames(t, tagMap);
+    const rels = exportImageRels(t);
+    const imgMap = Object.create(null);
     const imgs = [];
     if (includeImages && appDataDir) {
-      for (const rel of imageRels(t)) {
-        imgs.push({ rel, dataUrl: readImageDataUrl(appDataDir, rel) });
+      for (const rel of rels) {
+        const dataUrl = readImageDataUrl(appDataDir, rel);
+        imgs.push({ rel, dataUrl });
+        if (dataUrl) imgMap[rel] = dataUrl;
       }
+    } else if (includeImages) {
+      for (const rel of rels) imgs.push({ rel, dataUrl: null });
     }
+    const hasDoc = taskDoc.isValidDoc(t && t.doc);
+    const doc = taskDoc.resolveTaskDoc(t);
+    const bodyHtml = hasDoc ? docToExportHtml(doc, includeImages ? imgMap : null) : '';
     return {
       index: idx + 1,
-      text: String(t.text || '').trim() || '（无文字）',
+      text: exportPlainText(t),
+      bodyHtml,
+      imageRels: rels,
       status: STATUS_LABEL[t.status] || t.status || '—',
       tags: names,
       createdAt: formatTime(t.createdAt),
@@ -132,6 +271,7 @@ function buildDocumentModel(tasks, tags, options, appDataDir) {
       updatedAt: formatTime(t.updatedAt),
       sortTime: formatTime(t[sortKey]),
       images: imgs,
+      doc: hasDoc ? doc : null,
     };
   });
   return { summary, sortKey, includeImages, items, exportedAt: formatTime(new Date().toISOString()) };
@@ -143,17 +283,23 @@ function renderHtmlDocument(model, { forPrint = false } = {}) {
     const tagHtml = it.tags.length
       ? it.tags.map((n) => `<span class="tag">${esc(n)}</span>`).join('')
       : '<span class="muted">无标签</span>';
-    const imgHtml = includeImages && it.images.length
-      ? `<div class="imgs">${it.images.map((img) => (
-          img.dataUrl ? `<img src="${img.dataUrl}" alt="">` : ''
-        )).join('')}</div>`
-      : '';
+    let body;
+    if (it.bodyHtml) {
+      body = `<div class="body rich">${it.bodyHtml}</div>`;
+    } else {
+      const imgHtml = includeImages && it.images.length
+        ? `<div class="imgs">${it.images.map((img) => (
+            img.dataUrl ? `<img src="${img.dataUrl}" alt="">` : ''
+          )).join('')}</div>`
+        : '';
+      body = `<pre class="body">${esc(it.text)}</pre>${imgHtml}`;
+    }
     return `<article class="task">
   <header>
     <span class="idx">#${it.index}</span>
     <span class="status">${esc(it.status)}</span>
   </header>
-  <pre class="body">${esc(it.text)}</pre>
+  ${body}
   <div class="meta">
     <div class="tags">${tagHtml}</div>
     <div class="times">
@@ -162,7 +308,6 @@ function renderHtmlDocument(model, { forPrint = false } = {}) {
       <span>更新 ${esc(it.updatedAt)}</span>
     </div>
   </div>
-  ${imgHtml}
 </article>`;
   }).join('\n');
 
@@ -200,6 +345,18 @@ function renderHtmlDocument(model, { forPrint = false } = {}) {
     word-break: break-word;
     font-family: inherit;
     font-size: 14px;
+  }
+  .body.rich { white-space: normal; }
+  .body.rich p { margin: 0 0 0.6em; }
+  .body.rich ul, .body.rich ol { margin: 0 0 0.6em; padding-left: 1.3em; }
+  .body.rich img {
+    display: block;
+    max-width: 220px;
+    max-height: 160px;
+    object-fit: contain;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    margin: 8px 0;
   }
   .meta { margin-top: 10px; font-size: 12px; color: #606266; }
   .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
@@ -246,18 +403,26 @@ function renderMarkdown(model, assetNamesByTask) {
   for (const it of items) {
     lines.push(`## #${it.index} ${it.status}`);
     lines.push('');
-    lines.push(it.text);
-    lines.push('');
+    const assetMap = (assetNamesByTask && assetNamesByTask[it.index]) || null;
+    if (it.doc) {
+      const mdBody = docToExportMarkdown(it.doc, includeImages ? assetMap : null);
+      lines.push(mdBody || it.text);
+      lines.push('');
+    } else {
+      lines.push(it.text);
+      lines.push('');
+      if (includeImages && assetMap) {
+        for (const rel of (it.imageRels || [])) {
+          const name = assetMap[rel];
+          if (name) lines.push(`- ![](${name})`);
+        }
+        if (it.imageRels && it.imageRels.length) lines.push('');
+      }
+    }
     lines.push(`- 标签：${it.tags.length ? it.tags.join('、') : '无'}`);
     lines.push(`- 创建：${it.createdAt}`);
     lines.push(`- 状态：${it.statusAt}`);
     lines.push(`- 更新：${it.updatedAt}`);
-    if (includeImages) {
-      const names = (assetNamesByTask && assetNamesByTask[it.index]) || [];
-      for (const name of names) {
-        lines.push(`- ![](${name})`);
-      }
-    }
     lines.push('');
   }
   return lines.join('\n');
@@ -272,24 +437,7 @@ function writeHtmlFile(filePath, tasks, tags, options, appDataDir) {
 
 function writeMarkdownFile(filePath, tasks, tags, options, appDataDir) {
   const list = filterAndSortTasks(tasks, options);
-  const tagMap = tagMapOf(tags);
-  const summary = filtersSummary(options, tagMap);
-  const textModel = {
-    summary,
-    sortKey: options.sortKey || 'createdAt',
-    includeImages: !!options.includeImages,
-    items: list.map((t, idx) => ({
-      index: idx + 1,
-      text: String(t.text || '').trim() || '（无文字）',
-      status: STATUS_LABEL[t.status] || t.status || '—',
-      tags: taskTagNames(t, tagMap),
-      createdAt: formatTime(t.createdAt),
-      statusAt: formatTime(t.statusAt),
-      updatedAt: formatTime(t.updatedAt),
-      images: [],
-    })),
-    exportedAt: formatTime(new Date().toISOString()),
-  };
+  const model = buildDocumentModel(list, tags, options, appDataDir);
 
   const assetNamesByTask = Object.create(null);
   if (options.includeImages) {
@@ -299,16 +447,16 @@ function writeMarkdownFile(filePath, tasks, tags, options, appDataDir) {
     const used = new Set();
     list.forEach((t, idx) => {
       const index = idx + 1;
-      const names = [];
-      for (const rel of imageRels(t)) {
+      const byRel = Object.create(null);
+      for (const rel of exportImageRels(t)) {
         const name = copyImageAsset(appDataDir, rel, assetsDir, used);
-        if (name) names.push(`${base}_assets/${name.replace(/\\/g, '/')}`);
+        if (name) byRel[rel] = `${base}_assets/${name.replace(/\\/g, '/')}`;
       }
-      assetNamesByTask[index] = names;
+      assetNamesByTask[index] = byRel;
     });
   }
 
-  fs.writeFileSync(filePath, renderMarkdown(textModel, assetNamesByTask), 'utf8');
+  fs.writeFileSync(filePath, renderMarkdown(model, assetNamesByTask), 'utf8');
   return { ok: true, path: filePath, count: list.length };
 }
 

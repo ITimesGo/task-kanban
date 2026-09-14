@@ -25,20 +25,54 @@ function collectClipboardImageFiles(cd) {
   return out;
 }
 
-function insertTextAtCursor(ta, text) {
-  if (!ta || !text) return;
-  const start = ta.selectionStart ?? ta.value.length;
-  const end = ta.selectionEnd ?? start;
-  ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
-  const caret = start + text.length;
-  ta.focus();
-  ta.setSelectionRange(caret, caret);
+function isTextareaLike(el) {
+  return !!(el && typeof el.value === 'string' && typeof el.setSelectionRange === 'function');
+}
+
+function isContentEditable(el) {
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  return !!(el.getAttribute && el.getAttribute('contenteditable') === 'true');
+}
+
+function insertTextAtCursor(el, text) {
+  if (!el || !text) return;
+  if (isTextareaLike(el)) {
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? start;
+    el.value = el.value.slice(0, start) + text + el.value.slice(end);
+    const caret = start + text.length;
+    el.focus();
+    el.setSelectionRange(caret, caret);
+    return;
+  }
+  if (isContentEditable(el)) {
+    el.focus();
+    try {
+      if (document.queryCommandSupported && document.queryCommandSupported('insertText')) {
+        document.execCommand('insertText', false, text);
+        return;
+      }
+    } catch (_) {}
+    try {
+      document.execCommand('insertHTML', false, String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br>'));
+      return;
+    } catch (_) {}
+    // 最后手段：追加到末尾
+    const p = document.createElement('p');
+    p.textContent = text;
+    el.appendChild(p);
+  }
 }
 
 /**
  * @param {object} opts
  * @param {() => HTMLElement|null} opts.getZone 粘贴生效区域
- * @param {() => HTMLTextAreaElement|null} opts.getTextarea
+ * @param {() => HTMLElement|null} opts.getTextarea 描述输入（textarea 或 contenteditable）
  * @param {(items: any[]) => void} opts.addImages
  * @param {() => void} [opts.onTextChange]
  * @param {number} [opts.maxMb]
@@ -99,8 +133,8 @@ function bindContentPaste(opts) {
       return;
     }
 
-    // 焦点不在输入框时，纯文字写入描述
-    if (plainText && ta && target !== ta) {
+    // 焦点不在输入框时，纯文字写入描述（兼容 textarea / contenteditable）
+    if (plainText && ta && target !== ta && !ta.contains(target)) {
       e.preventDefault();
       insertTextAtCursor(ta, plainText);
       if (opts.onTextChange) opts.onTextChange();

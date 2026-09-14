@@ -76,6 +76,9 @@
 [data-skin="mario"] #createPanel {
   border-left: var(--pixel) solid var(--mario-brown);
 }
+[data-skin="mario"] .layout-split::before {
+  content: none;
+}
 [data-skin="mario"] .pagination {
   border-top: var(--pixel) solid var(--mario-brown);
 }
@@ -97,6 +100,7 @@
 [data-skin="mario"] .skin-option,
 [data-skin="mario"] .setting-actions button,
 [data-skin="mario"] #createActions .primary,
+[data-skin="mario"] #createPanel #createBtn,
 [data-skin="mario"] #detailActions button,
 [data-skin="mario"] #exportTasksBtn,
 [data-skin="mario"] .pg-pager button,
@@ -168,7 +172,7 @@
   text-shadow: 1px 1px 0 #fff;
 }
 
-[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn),
+[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del),
 [data-skin="mario"] .filters-toggle,
 [data-skin="mario"] #settingsBtn,
 [data-skin="mario"] .setting-actions button,
@@ -183,7 +187,7 @@
   image-rendering: pixelated;
   transition: transform 80ms steps(2), box-shadow 80ms steps(2), background 80ms linear;
 }
-[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):hover,
+[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):hover,
 [data-skin="mario"] .filters-toggle:hover,
 [data-skin="mario"] #settingsBtn:hover,
 [data-skin="mario"] .setting-actions button:hover,
@@ -194,13 +198,14 @@
   background: #fff0b0;
   color: var(--mario-brown);
 }
-[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):active,
+[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):active,
 [data-skin="mario"] .filters-toggle:active,
 [data-skin="mario"] .setting-actions button:active {
   transform: translate(1px, 1px);
   box-shadow: 1px 1px 0 var(--mario-brown);
 }
 [data-skin="mario"] #createActions .primary,
+[data-skin="mario"] #createPanel #createBtn,
 [data-skin="mario"] #detailActions .primary,
 [data-skin="mario"] #exportTasksBtn,
 [data-skin="mario"] .setting-actions button.primary,
@@ -212,6 +217,7 @@
   text-shadow: 1px 1px 0 rgba(0,0,0,.25);
 }
 [data-skin="mario"] #createActions .primary:hover,
+[data-skin="mario"] #createPanel #createBtn:hover,
 [data-skin="mario"] #detailActions .primary:hover,
 [data-skin="mario"] #exportTasksBtn:hover {
   background: var(--primary-hover) !important;
@@ -408,7 +414,8 @@
   background: #049cd8;
 }
 
-[data-skin="night"] .card.done .text { color: var(--text-muted); }
+[data-skin="night"] .card.done .text,
+[data-skin="night"] .card.done .doc-preview { color: var(--text-muted); }
 [data-skin="eyecare"] body {
   background-image: linear-gradient(180deg, rgba(255,255,255,.18), transparent 120px);
 }
@@ -506,6 +513,13 @@
   background: transparent;
   gap: 0;
 }
+[data-skin="apple"] .layout-split {
+  flex-basis: 8px;
+  width: 8px;
+}
+[data-skin="apple"] .layout-split::before {
+  content: none;
+}
 [data-skin="apple"] #list {
   background: transparent;
   min-width: 0;
@@ -569,12 +583,14 @@
     0 6px 16px rgba(15, 40, 80, 0.07);
   transform: none;
 }
-[data-skin="apple"] .card.done .text {
+[data-skin="apple"] .card.done .text,
+[data-skin="apple"] .card.done .doc-preview {
   color: #636366;
   text-decoration: line-through;
   text-decoration-color: rgba(60, 60, 67, 0.35);
 }
 [data-skin="apple"] .card.done .time,
+[data-skin="apple"] .card.done .card-time,
 [data-skin="apple"] .card.done .card-meta,
 [data-skin="apple"] .card.done .meta {
   color: #8e8e93;
@@ -662,11 +678,15 @@
 }
 [data-skin="apple"] .modal-header h2,
 [data-skin="apple"] #detailHead h2,
-[data-skin="apple"] #createPanel h2 {
+[data-skin="apple"] #createPanel h2,
+[data-skin="apple"] #createPanel .create-head h2 {
   color: #1d1d1f;
   letter-spacing: -0.03em;
   font-weight: 700;
   font-size: 17px;
+}
+[data-skin="apple"] #createPanel .create-foot {
+  border-top-color: rgba(60, 60, 67, 0.12);
 }
 
 /* ---- 详情弹窗：一张干净毛玻璃卡片 ---- */
@@ -696,7 +716,7 @@
   background: rgba(255, 255, 255, 0.35);
 }
 [data-skin="apple"] #detailModal .detail-top-row {
-  align-items: center;
+  align-items: flex-start;
   min-height: 28px;
 }
 [data-skin="apple"] #detailHead {
@@ -756,9 +776,21 @@
   color: #1d1d1f;
   margin: 0 0 12px;
 }
+[data-skin="apple"] #detailModal .modal-body .doc-view {
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.55;
+  color: #1d1d1f;
+  margin: 0 0 12px;
+}
 [data-skin="apple"] #detailModal .chips--detail,
 [data-skin="apple"] #detailModal .chip--detail {
   margin-bottom: 14px;
+}
+[data-skin="apple"] #detailHead .chips--detail,
+[data-skin="apple"] #detailHead .chip--detail {
+  margin-bottom: 0;
 }
 [data-skin="apple"] #detailModal .detail-img-list {
   gap: 12px;
@@ -939,7 +971,7 @@
 }
 
 /* 次级按钮：圆角矩形（非胶囊）；排除侧栏 / 关闭 / 卡片勾选 / 缩略图删除 */
-[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(#settingsClose):not(#detailClose):not(#tagClose):not(.check):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply),
+[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(#settingsClose):not(#detailClose):not(#tagClose):not(.check):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del),
 [data-skin="apple"] .filters-toggle,
 [data-skin="apple"] #settingsBtn,
 [data-skin="apple"] .icon-btn,
@@ -957,7 +989,8 @@
 [data-skin="apple"] .icon-btn,
 [data-skin="apple"] #editAdd,
 [data-skin="apple"] #editAddFile,
-[data-skin="apple"] #createActions .icon-btn {
+[data-skin="apple"] #createActions .icon-btn,
+[data-skin="apple"] #createPanel .create-tools .icon-btn {
   width: 36px !important;
   height: 36px !important;
   min-width: 36px !important;
@@ -972,7 +1005,7 @@
   width: 16px;
   height: 16px;
 }
-[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(#settingsClose):not(#detailClose):not(#tagClose):not(.check):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):hover,
+[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(#settingsClose):not(#detailClose):not(#tagClose):not(.check):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del):hover,
 [data-skin="apple"] .filters-toggle:hover,
 [data-skin="apple"] #settingsBtn:hover,
 [data-skin="apple"] .icon-btn:hover,
@@ -984,6 +1017,7 @@
   box-shadow: none;
 }
 [data-skin="apple"] #createActions .primary,
+[data-skin="apple"] #createPanel #createBtn,
 [data-skin="apple"] #detailActions .primary,
 [data-skin="apple"] #exportTasksBtn,
 [data-skin="apple"] .setting-actions button.primary,
@@ -999,6 +1033,7 @@
   border-radius: 8px !important;
 }
 [data-skin="apple"] #createActions .primary:hover,
+[data-skin="apple"] #createPanel #createBtn:hover,
 [data-skin="apple"] #detailActions .primary:hover,
 [data-skin="apple"] #exportTasksBtn:hover,
 [data-skin="apple"] #cleanupBtn:hover {
@@ -2647,8 +2682,8 @@ body {
   background: var(--bg);
 }
 #list {
-  flex: 3;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: 280px;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -2686,20 +2721,477 @@ body {
 [data-skin="apple"] .card-ocr-label {
   color: #8e8e93;
 }
+.layout-split {
+  flex: 0 0 8px;
+  width: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: col-resize;
+  position: relative;
+  z-index: 3;
+  align-self: stretch;
+  touch-action: none;
+}
+.layout-split::before {
+  content: none;
+}
+.layout-split:hover,
+.layout-split:focus-visible,
+body.is-resizing-layout .layout-split {
+  background: transparent;
+}
+.layout-split:focus-visible {
+  outline: none;
+}
+body.is-resizing-layout {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+body.is-resizing-layout * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
 #createPanel {
-  flex: 2;
-  min-width: 280px;
+  flex: 0 0 auto;
+  width: var(--create-panel-width, 400px);
+  min-width: 320px;
   min-height: 0;
   border-left: 1px solid var(--border);
   background: var(--surface);
-  padding: 24px;
-  overflow-y: auto;
+  padding: 12px 14px 10px;
+  overflow: hidden;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
-#createPanel h2 {
-  margin: 0 0 16px;
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+#createPanel .rich-editor-host,
+#createPanel .rich-editor {
+  flex: 1 1 auto;
+  min-height: 220px;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
+#createPanel .rich-surface {
+  flex: 1 1 auto;
+  min-height: 180px;
+  max-height: none;
+}
+#createPanel .create-side {
+  flex: 0 0 auto;
+  max-height: 72px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  margin: 8px 0 0;
+  padding: 0;
+}
+#createPanel .create-side.is-expanded {
+  max-height: 132px;
+}
+#createPanel .tag-select {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  gap: 5px;
+}
+#createPanel .tag-pick,
+#createPanel .tag-expand {
+  flex: 0 0 auto;
+  font-size: 12px;
+  padding: 3px 9px;
+  line-height: 1.35;
+}
+#createPanel #newAttachments {
+  margin: 6px 0 0;
+}
+#createPanel #newAttachments:empty {
+  display: none;
+  margin: 0;
+}
+#createPanel .create-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  min-width: 0;
+}
+#createPanel .create-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+#createPanel #createBtn {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+#createPanel #createProgress {
+  flex: 0 0 auto;
+  margin-top: 6px;
+}
+
+/* ---- 轻量富文本编辑器 ---- */
+.rich-editor-host,
+.rich-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  overflow: hidden;
+  min-height: 120px;
+  margin-bottom: 12px;
+}
+.rich-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.rich-tb {
+  min-width: 32px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.rich-tb:hover { border-color: var(--primary); color: var(--primary); }
+button.rich-tb.is-active,
+.rich-tb.is-active {
+  border-color: var(--primary) !important;
+  background: rgba(var(--rgb, 59, 130, 246), 0.2) !important;
+  color: var(--primary) !important;
+  font-weight: 700 !important;
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+[data-skin="mario"] button.rich-tb.is-active,
+[data-skin="mario"] .rich-tb.is-active {
+  background: var(--mario-gold, #ffd54f) !important;
+  border-color: var(--mario-brown, #3d2416) !important;
+  color: var(--mario-brown, #3d2416) !important;
+  box-shadow: 2px 2px 0 var(--mario-brown, #3d2416) !important;
+}
+
+/* 苹果皮肤：独立胶囊按钮，对齐次级按钮 / tag-pick */
+[data-skin="apple"] .rich-editor-host,
+[data-skin="apple"] .rich-editor {
+  border: 0.5px solid var(--apple-stroke) !important;
+  background: rgba(255, 255, 255, 0.55) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 1px 0 var(--apple-highlight) inset;
+  overflow: hidden;
+}
+[data-skin="apple"] .rich-toolbar {
+  background: transparent !important;
+  border-bottom: 0.5px solid var(--apple-stroke) !important;
+  gap: 6px !important;
+  padding: 8px 10px !important;
+}
+[data-skin="apple"] button.rich-tb,
+[data-skin="apple"] .rich-tb {
+  border: none !important;
+  background: rgba(118, 118, 128, 0.12) !important;
+  color: #1d1d1f !important;
+  border-radius: 8px !important;
+  min-width: 32px !important;
+  height: 28px !important;
+  padding: 0 10px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.02em !important;
+  line-height: 1 !important;
+  box-shadow: none !important;
+}
+[data-skin="apple"] button.rich-tb:hover,
+[data-skin="apple"] .rich-tb:hover {
+  background: rgba(var(--rgb), 0.12) !important;
+  color: var(--primary) !important;
+  border: none !important;
+}
+[data-skin="apple"] button.rich-tb.is-active,
+[data-skin="apple"] .rich-tb.is-active {
+  background: var(--primary) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: none !important;
+  font-weight: 700 !important;
+}
+[data-skin="apple"] .doc-media-del {
+  background: rgba(0, 0, 0, 0.62) !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 11px !important;
+  width: 22px !important;
+  height: 22px !important;
+  min-width: 22px !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+.rich-surface {
+  position: relative;
+  min-height: 160px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  outline: none;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+}
+.rich-surface:empty::before,
+.rich-surface p:only-child:has(br:only-child)::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.rich-surface p { margin: 0 0 0.6em; }
+.rich-surface ul, .rich-surface ol { margin: 0 0 0.6em; padding-left: 1.3em; }
+.rich-surface a { color: var(--primary); }
+.doc-media {
+  margin: 8px 0;
+  position: relative;
+  display: block;
+  max-width: 100%;
+  cursor: text;
+}
+.rich-surface > p {
+  min-height: 1.55em;
+}
+/* 图片前的空段更容易点到 */
+.rich-surface > p:has(+ .doc-media) {
+  min-height: 1.8em;
+}
+.doc-media img,
+.doc-media video {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}
+/* 新建/编辑：默认可到编辑区宽度；拖大后不再限高 */
+.rich-surface .doc-media {
+  max-width: 100%;
+  margin: 8px 0;
+  cursor: grab;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+.rich-surface .doc-media.is-dragging {
+  opacity: 0.42;
+  cursor: grabbing;
+}
+.rich-surface .doc-drop-line {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  height: 3px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: var(--primary);
+  pointer-events: none;
+  z-index: 6;
+  display: none;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+.rich-surface .doc-drop-line.is-visible {
+  display: block;
+}
+body.is-media-dragging {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+body.is-media-dragging .rich-surface .doc-media {
+  cursor: grabbing;
+}
+body.is-media-resizing {
+  user-select: none !important;
+}
+.rich-surface .doc-media img,
+.rich-surface .doc-media video {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  margin: 0;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+.rich-surface .doc-media[data-width] {
+  max-width: 100%;
+}
+.rich-surface .doc-media[data-width] img,
+.rich-surface .doc-media[data-width] video,
+.rich-surface .doc-media.is-selected img,
+.rich-surface .doc-media.is-selected video {
+  width: 100%;
+  height: auto;
+  max-height: none;
+  object-fit: contain;
+}
+.rich-surface .doc-media.is-selected {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+.doc-media-chrome {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.doc-media-del {
+  pointer-events: auto;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 14px;
+  line-height: 22px;
+  padding: 0;
+  cursor: pointer;
+}
+.doc-media-del:hover { background: #ff3b30; }
+.doc-resize {
+  pointer-events: auto;
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border: 2px solid var(--primary);
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+.doc-resize.nw { left: -5px; top: -5px; cursor: nwse-resize; }
+.doc-resize.ne { right: -5px; top: -5px; cursor: nesw-resize; }
+.doc-resize.sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
+.doc-resize.se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+.doc-play {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+/* 详情文档流 */
+.doc-view { font-size: 14px; line-height: 1.55; color: var(--text); }
+.doc-view p { margin: 0 0 0.65em; }
+.doc-view ul, .doc-view ol { margin: 0 0 0.65em; padding-left: 1.3em; }
+.doc-view .doc-media {
+  display: inline-block;
+  max-width: 100%;
+  width: auto;
+  vertical-align: top;
+}
+.doc-view .doc-media img,
+.doc-view .doc-media video {
+  max-width: 100%;
+  max-height: 420px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+.doc-view .doc-image img { cursor: zoom-in; }
+/* 视频未出元数据前浏览器默认 300×150；固定满宽避免点播放后突然变大 */
+.doc-view .doc-video {
+  display: block;
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+}
+.doc-view .doc-video video {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  max-height: 420px;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #111;
+  cursor: pointer;
+}
+.doc-view .doc-play { display: none; }
+.doc-view .doc-media[data-width] {
+  max-width: 100%;
+}
+.doc-view .doc-media[data-width] img,
+.doc-view .doc-media[data-width] video {
+  width: 100%;
+  height: auto;
+  max-height: none;
+}
+.doc-view .doc-video[data-width] video {
+  aspect-ratio: auto;
+}
+
+/* 卡片迷你混排 */
+.doc-preview {
+  max-height: 120px;
+  overflow: hidden;
+  position: relative;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+}
+.doc-preview.muted { color: var(--text-muted); mask-image: none; -webkit-mask-image: none; }
+.doc-preview p { margin: 0 0 0.35em; }
+.doc-preview ul, .doc-preview ol { margin: 0 0 0.35em; padding-left: 1.2em; }
+.doc-preview a { color: inherit; pointer-events: none; text-decoration: none; }
+.doc-preview .doc-media {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 4px 6px 4px 0;
+  max-width: 72px;
+  width: auto !important;
+}
+.doc-preview .doc-media img,
+.doc-preview .doc-media video {
+  width: 72px;
+  height: 54px;
+  object-fit: cover;
+  max-height: none;
+  border-radius: 6px;
+}
+.doc-preview .thumb-more {
+  display: inline-block;
+  vertical-align: middle;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 4px;
 }
 
 /* ---- 任务卡片 ---- */
@@ -2724,9 +3216,11 @@ body {
 .card:not(.done) { border-color: rgba(var(--rgb), 0.5); }
 .card:not(.done):hover { border-color: rgba(var(--rgb), 0.75); }
 .card.done { opacity: 0.65; }
-.card.done .text { text-decoration: line-through; color: var(--text-muted); }
+.card.done .text,
+.card.done .doc-preview { text-decoration: line-through; color: var(--text-muted); }
+.card.done .doc-preview p { text-decoration: line-through; }
 .card .card-main { flex: 1; min-width: 0; }
-.card .card-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.card .card-title { display: block; }
 .card .text {
   flex: 1 1 auto;
   min-width: 0;
@@ -2738,7 +3232,6 @@ body {
   overflow: hidden;
   white-space: pre-wrap;
 }
-.card .time { font-size: 12px; color: var(--text-muted); white-space: nowrap; flex: 0 0 auto; }
 .card-match-list {
   display: flex;
   flex-direction: column;
@@ -2927,8 +3420,9 @@ textarea:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(var(--rgb), 0.18);
 }
-#createActions { display: flex; gap: 8px; margin-top: 4px; align-items: center; }
+#createActions { display: flex; gap: 8px; margin-top: 0; align-items: center; }
 #createActions button.icon-btn,
+#createPanel .create-tools .icon-btn,
 #editAdd,
 #editAddFile,
 .icon-btn {
@@ -2965,6 +3459,7 @@ textarea:focus {
 .icon-btn:hover { border-color: var(--primary); color: var(--primary); }
 #editAddFile { margin-left: 8px; }
 #createActions button:not(.icon-btn),
+#createPanel #createBtn,
 #detailActions button {
   padding: 6px 14px;
   border-radius: var(--radius-sm);
@@ -2978,16 +3473,20 @@ textarea:focus {
 #createActions button:hover,
 #detailActions button:not(.btn-link):not(.primary):hover { border-color: var(--primary); color: var(--primary); }
 #createActions .primary,
+#createPanel #createBtn,
 #detailActions .primary {
   background: var(--primary);
   color: var(--on-primary);
   border-color: var(--primary);
 }
 #createActions .primary:hover,
+#createPanel #createBtn:hover,
 #detailActions .primary:hover { background: var(--primary-hover); color: var(--on-primary); }
 #createActions .primary:active,
+#createPanel #createBtn:active,
 #detailActions .primary:active { background: var(--primary-active); color: var(--on-primary); }
-#createActions .primary:disabled {
+#createActions .primary:disabled,
+#createPanel #createBtn:disabled {
   background: #a0cfff;
   border-color: #a0cfff;
   color: #f0faff;
@@ -3191,14 +3690,27 @@ textarea:focus {
 }
 #detailModal .detail-top-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
 }
 #detailModal .modal-header h2,
 #detailHead h2 { font-size: 16px; }
-#detailHead { display: flex; align-items: center; gap: 10px; min-width: 0; margin-right: auto; }
+#detailHead { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; min-width: 0; margin-right: auto; flex: 1; }
+#detailHead .status-badge { flex: 0 0 auto; }
+#detailHead .chips--detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+}
+#detailHead .chip--detail {
+  margin: 0;
+}
 #detailMeta.detail-meta {
   flex: 0 0 auto;
   padding: 0;
@@ -3299,6 +3811,13 @@ textarea:focus {
   font-size: 16px;
   font-weight: 600;
   line-height: 1.6;
+  margin: 0 0 12px;
+  word-break: break-word;
+}
+#detailModal .modal-body .doc-view {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
   margin: 0 0 12px;
   word-break: break-word;
 }
@@ -3416,6 +3935,26 @@ textarea:focus {
   height: 22px;
 }
 .modal img { max-width: 100%; border-radius: var(--radius-sm); margin: 4px 0; }
+.modal .rich-surface .doc-media img,
+.modal .rich-surface .doc-media video {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  margin: 0;
+}
+.modal .rich-surface .doc-media[data-width] img,
+.modal .rich-surface .doc-media[data-width] video,
+.modal .rich-surface .doc-media.is-selected img,
+.modal .rich-surface .doc-media.is-selected video {
+  width: 100%;
+  height: auto;
+  max-height: none;
+}
+#detailModal .rich-surface {
+  max-height: min(52vh, 520px);
+}
 .att-section { margin: 0 0 6px; }
 .att-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .att-head h3 { margin: 0; font-size: 12px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.04em; }
@@ -4074,6 +4613,67 @@ textarea:focus {
   padding: 4px 12px;
 }
 .card .chips { margin: 10px 0 0; }
+.card .chips--meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 6px;
+}
+/* 时间：中性元信息，无 pill 填色，与多彩标签区分 */
+.card .card-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 2px 2px 2px 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--text) 58%, var(--text-muted));
+  font-weight: 500;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  box-shadow: none;
+  white-space: nowrap;
+}
+.card .card-time .card-time-ico {
+  display: block;
+  flex: 0 0 auto;
+  opacity: 0.85;
+  color: color-mix(in srgb, var(--text) 45%, var(--text-muted));
+}
+.card .card-time .card-time-text {
+  line-height: 1.2;
+  color: inherit;
+}
+.card .card-time.is-empty {
+  opacity: 0.65;
+}
+.card .card-time.is-empty .card-time-text {
+  color: var(--text-muted);
+}
+[data-skin="apple"] .card .card-time {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: #8e8e93;
+  padding: 2px 0;
+  box-shadow: none;
+  font-weight: 500;
+}
+[data-skin="apple"] .card .card-time .card-time-ico {
+  opacity: 0.8;
+  color: #8e8e93;
+}
+[data-skin="apple"] .card .card-time .card-time-text {
+  color: #636366;
+}
+[data-skin="mario"] .card .card-time {
+  font-family: inherit;
+  image-rendering: auto;
+}
 .modal-body > .chips { margin-top: 0; }
 .chip {
   display: inline-block;

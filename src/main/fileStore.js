@@ -3,6 +3,7 @@ const path = require('path');
 const images = require('./images');
 const videos = require('./videos');
 const mediaLayout = require('./mediaLayout');
+const taskDoc = require('../renderer/taskDoc');
 
 class FileStore {
   #tasks = null;
@@ -262,6 +263,13 @@ class FileStore {
         return { ...m, rel: moveCached(m.rel, folder) };
       });
     }
+    if (taskDoc.isValidDoc(task.doc)) {
+      next.doc = taskDoc.mapDocMediaSrcs(task.doc, (src, kind) => {
+        if (!src || String(src).startsWith(taskDoc.PENDING_PREFIX)) return src;
+        const folder = kind === 'video' ? 'videos' : 'images';
+        return moveCached(src, folder);
+      });
+    }
     return next;
   }
 
@@ -404,6 +412,12 @@ class FileStore {
       const next = { ...t, images, videos, attachments };
       if (Array.isArray(t.media)) {
         next.media = t.media.map((m) => (m && m.rel ? { ...m, rel: rewriteRel(m.rel) } : m));
+      }
+      if (taskDoc.isValidDoc(t.doc)) {
+        next.doc = taskDoc.mapDocMediaSrcs(t.doc, (src) => {
+          if (!src || String(src).startsWith(taskDoc.PENDING_PREFIX)) return src;
+          return rewriteRel(src);
+        });
       }
       return next;
     };

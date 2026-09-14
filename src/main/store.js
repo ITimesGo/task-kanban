@@ -1,15 +1,25 @@
 const crypto = require('crypto');
+const taskDoc = require('../renderer/taskDoc');
 
 const MAX_IMAGES = 10;
 const MAX_VIDEOS = 3;
 const MAX_ATTACHMENTS = 10;
 
-function createTask({ text = '', images = [], videos = [], attachments = [], media } = {}) {
-  const hasMedia = images.length || videos.length || (Array.isArray(media) && media.length);
-  if (!String(text || '').trim() && !hasMedia && !attachments.length) {
-    const err = new Error('请至少输入文字、图片、视频或附件');
-    err.code = 'EMPTY_TASK';
-    throw err;
+function createTask({ text = '', images = [], videos = [], attachments = [], media, doc } = {}) {
+  const atts = attachments || [];
+  if (doc !== undefined && taskDoc.isValidDoc(doc)) {
+    if (taskDoc.isTaskContentEmpty({ doc, attachments: atts })) {
+      const err = new Error('请至少输入文字、图片、视频或附件');
+      err.code = 'EMPTY_TASK';
+      throw err;
+    }
+  } else {
+    const hasMedia = images.length || videos.length || (Array.isArray(media) && media.length);
+    if (!String(text || '').trim() && !hasMedia && !atts.length) {
+      const err = new Error('请至少输入文字、图片、视频或附件');
+      err.code = 'EMPTY_TASK';
+      throw err;
+    }
   }
   const now = new Date().toISOString();
   const task = {
@@ -17,13 +27,14 @@ function createTask({ text = '', images = [], videos = [], attachments = [], med
     text: String(text || ''),
     images: images.slice(0, MAX_IMAGES),
     videos: videos.slice(0, MAX_VIDEOS),
-    attachments: attachments.slice(0, MAX_ATTACHMENTS),
+    attachments: atts.slice(0, MAX_ATTACHMENTS),
     status: 'pending',
     createdAt: now,
     updatedAt: now,
-    statusAt: null, // 状态处理时间：首次切换完成/取消时才写入
+    statusAt: null,
   };
   if (Array.isArray(media)) task.media = media;
+  if (doc !== undefined && taskDoc.isValidDoc(doc)) task.doc = doc;
   return task;
 }
 
@@ -56,21 +67,25 @@ function toggleStatus(tasks, id) {
   );
 }
 
-function updateTask(tasks, id, { text, images, videos, attachments, media }) {
+function updateTask(tasks, id, { text, images, videos, attachments, media, doc }) {
   const now = new Date().toISOString();
-  return tasks.map((t) =>
-    t.id === id
-      ? {
-          ...t,
-          text: text !== undefined ? String(text) : t.text,
-          images: images !== undefined ? images.slice(0, MAX_IMAGES) : t.images,
-          videos: videos !== undefined ? videos.slice(0, MAX_VIDEOS) : (t.videos || []),
-          attachments: attachments !== undefined ? attachments.slice(0, MAX_ATTACHMENTS) : t.attachments,
-          media: media !== undefined ? media : t.media,
-          updatedAt: now, // 只更新编辑时间，不影响状态处理时间
-        }
-      : t
-  );
+  return tasks.map((t) => {
+    if (t.id !== id) return t;
+    const next = {
+      ...t,
+      text: text !== undefined ? String(text) : t.text,
+      images: images !== undefined ? images.slice(0, MAX_IMAGES) : t.images,
+      videos: videos !== undefined ? videos.slice(0, MAX_VIDEOS) : (t.videos || []),
+      attachments: attachments !== undefined ? attachments.slice(0, MAX_ATTACHMENTS) : t.attachments,
+      media: media !== undefined ? media : t.media,
+      updatedAt: now,
+    };
+    if (doc !== undefined) {
+      if (taskDoc.isValidDoc(doc)) next.doc = doc;
+      else if (doc === null) delete next.doc;
+    }
+    return next;
+  });
 }
 
 function removeTask(tasks, id) {

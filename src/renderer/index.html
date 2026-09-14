@@ -330,23 +330,25 @@
       <div id="pagination" class="pagination hidden"></div>
     </section>
 
+    <div id="layoutSplit" class="layout-split" role="separator" aria-orientation="vertical" aria-label="拖动调整创建区宽度，双击恢复默认" aria-valuemin="320" aria-valuemax="65" tabindex="0" title="拖动调整宽度 · 双击恢复默认"></div>
+
     <section id="createPanel">
-      <h2>创建任务</h2>
-      <textarea id="newText" rows="8" placeholder="输入任务描述或备注…"></textarea>
-      <div id="newThumbs" class="thumbs"></div>
-      <div id="createTags" class="tag-select"></div>
-      <div id="newAttachments" class="attachments"></div>
-      <div id="createActions">
-        <button id="addFileBtn" class="icon-btn" title="添加附件" aria-label="添加附件"><svg class="att-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-        <button id="addImageBtn" class="icon-btn" title="添加图片或视频" aria-label="添加图片或视频"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></button>
-        <button id="manTagBtn" class="icon-btn" title="管理标签" aria-label="管理标签"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></button>
-        <button id="createBtn" class="primary">创建任务</button>
+      <div id="createEditor" class="rich-editor-host"></div>
+      <div class="create-side" id="createSide">
+        <div id="createTags" class="tag-select"></div>
+        <div id="newAttachments" class="attachments"></div>
       </div>
+      <footer class="create-foot">
+        <div class="create-tools">
+          <button id="addFileBtn" class="icon-btn" title="添加附件" aria-label="添加附件"><svg class="att-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+          <button id="manTagBtn" class="icon-btn" title="管理标签" aria-label="管理标签"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></button>
+        </div>
+        <button id="createBtn" class="primary">创建任务</button>
+      </footer>
       <div id="createProgress" class="upload-progress hidden">
         <div class="up-bar"><div class="up-fill" id="createProgressFill"></div></div>
         <span class="up-text" id="createProgressText"></span>
       </div>
-      <p class="hint">支持拖入或 Ctrl+V 粘贴；缩略图可拖动调整顺序（图片≤10MB×10；视频 mp4/webm/mov≤200MB×3）</p>
     </section>
   </main>
 
@@ -432,6 +434,9 @@
   </div>
 
   <script src="taskMedia.js"></script>
+  <script src="taskDoc.js"></script>
+  <script src="docRender.js"></script>
+  <script src="richEditor.js"></script>
   <script src="api.js"></script>
   <script src="themeColor.js"></script>
   <script src="skins.js"></script>
@@ -447,6 +452,7 @@
   <script src="lightbox.js"></script>
   <script src="filters.js"></script>
   <script src="create.js"></script>
+  <script src="layoutSplit.js"></script>
   <script src="clipboardQuick.js"></script>
   <script src="detail.js"></script>
   <script src="tags-ui.js"></script>

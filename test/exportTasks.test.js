@@ -80,6 +80,43 @@ test('Markdown 渲染包含标签与状态', () => {
   assert.match(md, /生活/);
 });
 
+test('导出正文优先用 doc 纯文本，图片按 doc 顺序（跳过视频）', () => {
+  const rich = [{
+    id: 'r1',
+    text: '旧字段',
+    status: 'pending',
+    tags: ['t1'],
+    createdAt: '2026-04-01T10:00:00.000Z',
+    updatedAt: '2026-04-01T10:00:00.000Z',
+    statusAt: null,
+    images: ['images/z.png', 'images/a.png'],
+    videos: ['videos/v.mp4'],
+    doc: {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: '加粗', marks: [{ type: 'bold' }] },
+            { type: 'text', text: '正文' },
+          ],
+        },
+        { type: 'image', attrs: { src: 'images/a.png' } },
+        { type: 'video', attrs: { src: 'videos/v.mp4' } },
+        { type: 'image', attrs: { src: 'images/z.png' } },
+      ],
+    },
+  }];
+  const model = buildDocumentModel(rich, tags, {
+    tagIds: [], status: 'all', sortKey: 'createdAt', includeImages: true,
+  }, null);
+  assert.equal(model.items[0].text, '加粗正文');
+  assert.deepEqual(model.items[0].imageRels, ['images/a.png', 'images/z.png']);
+  const html = renderHtmlDocument(model);
+  assert.match(html, /<strong>加粗<\/strong>正文/);
+  assert.doesNotMatch(html, /video|mp4/i);
+});
+
 test('writeHtmlFile / writeMarkdownFile 写出文件', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kanban-export-'));
   const htmlPath = path.join(dir, 'out.html');
