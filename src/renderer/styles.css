@@ -3690,8 +3690,10 @@ body.is-resizing-layout * {
   min-height: 0;
   border-left: 1px solid var(--border);
   background: var(--surface);
-  /* 顶部仅留贴图标的窄边，不另占一行工具栏高度 */
-  padding: 16px 12px 10px;
+  --create-chrome-top: 4px;
+  --create-chrome-h: 14px;
+  --create-chrome-gap: 4px;
+  padding: calc(var(--create-chrome-top) + var(--create-chrome-h) + var(--create-chrome-gap)) 12px 10px;
   overflow: hidden;
   box-sizing: border-box;
   display: flex;
