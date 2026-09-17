@@ -3539,18 +3539,25 @@ body.is-resizing-layout .layout-split {
   display: none !important;
 }
 .create-chrome {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  z-index: 6;
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 4px;
-  flex: 0 0 auto;
-  margin: 0 0 8px;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  line-height: 0;
+  pointer-events: none;
 }
 .create-chrome-btn {
-  width: 28px;
-  height: 28px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  pointer-events: auto;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 4px;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -3558,12 +3565,20 @@ body.is-resizing-layout .layout-split {
   align-items: center;
   justify-content: center;
   padding: 0;
+  opacity: 0.72;
+}
+.create-chrome-btn svg {
+  width: 11px;
+  height: 11px;
+  display: block;
 }
 .create-chrome-btn:hover {
+  opacity: 1;
   color: var(--text);
   background: color-mix(in srgb, var(--primary) 10%, transparent);
 }
 .create-chrome-btn.is-pinned {
+  opacity: 1;
   color: var(--primary);
   background: color-mix(in srgb, var(--primary) 12%, transparent);
 }
@@ -3667,6 +3682,7 @@ body.is-resizing-layout * {
   user-select: none !important;
 }
 #createPanel {
+  position: relative;
   flex: 0 0 auto;
   width: var(--create-panel-width, 400px);
   min-width: 320px;
