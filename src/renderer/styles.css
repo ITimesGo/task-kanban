@@ -3540,13 +3540,13 @@ body.is-resizing-layout .layout-split {
 }
 .create-chrome {
   position: absolute;
-  top: 1px;
-  right: 4px;
+  top: 4px;
+  right: 10px;
   z-index: 6;
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 1px;
+  gap: 4px;
   margin: 0;
   padding: 0;
   height: 14px;
