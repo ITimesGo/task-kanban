@@ -1,7 +1,7 @@
 # 新建区可收起（FAB + 固定）— 设计规格
 
 日期：2026-09-17  
-状态：已与用户确认交互，待规格评审  
+状态：已与用户确认交互；规格评审修订中  
 范围：简易任务看板 — 主布局新建区、右下角 FAB、设置「默认视图」  
 相关代码：`index.html`（`#createPanel` / `#layoutSplit`）、`layoutSplit.js`、`create.js`、`viewDefaults.js`、`settings.js`
 
@@ -57,6 +57,18 @@
 
 - 显示右栏 + 分隔条：`mode === 'docked' || (mode === 'collapsed' && createPanelOpen)`
 - 显示 FAB：`mode === 'collapsed' && !createPanelOpen`
+
+### 2.2.1 `applyCreatePanelMode` 与设置保存
+
+`applyCreatePanelMode(mode, opts)` 规则：
+
+| 调用场景 | `createPanelOpen` |
+|----------|-------------------|
+| **冷启动** / `applySavedViewDefaults` | `docked` → 视为开；`collapsed` → `false`（只显示 FAB） |
+| **`createPanelMode` 实际变更**（设置保存或面板固定/收起导致 mode 变了） | 按新 mode：切到 `docked` 则打开右栏；切到 `collapsed` 则关闭右栏（`open = false`） |
+| **同 mode 的设置保存**（例如只改每页条数） | **保留**当前 `createPanelOpen`，不得把已展开的临时面板关掉 |
+
+实现注意：`applyViewDefaultsToSession` 应比较新旧 `createPanelMode`；仅 mode 变化或冷启动时按上表重置 open，避免设置里改无关项时误收起面板。
 
 ### 2.3 操作真值表
 
@@ -126,7 +138,8 @@
 | 单元 | 职责 |
 |------|------|
 | `viewDefaults.js` | 扩展 `VIEW_FACTORY_DEFAULTS` / `normalize` / `clone`；`applyViewDefaultsToSession` 调用面板应用函数 |
-| 新建模块（建议 `createPanelMode.js` 或并入 `layoutSplit.js` 旁的小模块） | mode / open 状态、FAB 显隐、面板/分隔条显隐、固定与收起绑定、对外 `applyCreatePanelMode(mode, { open? })` |
+| 新建模块（建议 `createPanelMode.js`，与 `layoutSplit.js` 并列） | mode / open 状态、FAB 显隐、面板/分隔条显隐、固定与收起绑定、对外 `applyCreatePanelMode(mode, { open?, reason? })` |
+| `layoutSplit.js` | 继续管宽度记忆与拖拽；**显隐由 mode 模块驱动**（隐藏时 split 不接收指针）。两边初始化顺序：先挂 mode 再/或同步 apply，避免首屏先画出右栏再闪收起 |
 | `create.js` | 创建成功路径**不**改 mode；保持现有清空表单 |
 | `settings.js` + `index.html` 设置区 | 默认视图 UI 绑定 |
 | `styles.css` | FAB、顶栏按钮、各皮肤；collapsed 时 `#layout` 单栏样式 |
