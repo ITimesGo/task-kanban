@@ -86,7 +86,6 @@
           <button class="settings-nav-item active" data-panel="panel-storage">数据存储</button>
           <button class="settings-nav-item" data-panel="panel-trash">回收站</button>
           <button class="settings-nav-item" data-panel="panel-backup">备份</button>
-          <button class="settings-nav-item" data-panel="panel-export">导出</button>
           <button class="settings-nav-item" data-panel="panel-defaults">常用默认</button>
           <button class="settings-nav-item" data-panel="panel-theme">外观</button>
           <button class="settings-nav-item" data-panel="panel-plugins">插件</button>
@@ -149,65 +148,6 @@
               <p class="setting-hint">合并导入：相同 id 的任务/标签会跳过，不覆盖现有数据。</p>
             </div>
           </div>
-          <div class="settings-panel hidden" id="panel-export">
-            <div class="setting-row">
-              <div class="setting-label">导出任务</div>
-              <p class="setting-hint">按标签筛选，按时间排序，导出为 PDF / Markdown / HTML。</p>
-              <div class="export-field">
-                <div class="export-label">标签（不选为全部）</div>
-                <div id="exportTagWrap" class="export-tag-wrap">
-                  <div id="exportTagControl" class="multi-select">
-                    <div id="exportTagSelected" class="ms-selected"><span class="ms-placeholder">选择标签</span></div>
-                    <button type="button" id="exportTagClear" class="ms-clear" title="清空" aria-label="清空选中标签" tabindex="-1">
-                      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.5 13.1a.75.75 0 0 1-1.06 1.06L12 13.06l-2.44 2.45a.75.75 0 1 1-1.06-1.06L10.94 12 8.5 9.56a.75.75 0 0 1 1.06-1.06L12 10.94l2.44-2.44a.75.75 0 0 1 1.06 1.06L13.06 12l2.44 2.1z"/></svg>
-                    </button>
-                    <span class="ms-arrow">▾</span>
-                  </div>
-                  <div id="exportTagDropdown" class="ms-dropdown hidden">
-                    <input id="exportTagSearch" class="ms-search" type="text" placeholder="搜索标签…" />
-                    <div id="exportTagOptions"></div>
-                  </div>
-                </div>
-              </div>
-              <div class="export-field export-inline">
-                <div class="export-select-field">
-                  <div class="export-label">状态</div>
-                  <div id="exportStatusWrap" class="export-select-wrap">
-                    <div id="exportStatusSelect" class="range-select" tabindex="0">
-                      <span id="exportStatusSelected" class="range-value">全部</span>
-                      <span class="ms-arrow">▾</span>
-                    </div>
-                    <div id="exportStatusDropdown" class="range-dropdown hidden"></div>
-                  </div>
-                </div>
-                <div class="export-select-field">
-                  <div class="export-label">排序</div>
-                  <div id="exportSortWrap" class="export-select-wrap">
-                    <div id="exportSortSelect" class="range-select" tabindex="0">
-                      <span id="exportSortSelected" class="range-value">创建时间</span>
-                      <span class="ms-arrow">▾</span>
-                    </div>
-                    <div id="exportSortDropdown" class="range-dropdown hidden"></div>
-                  </div>
-                </div>
-              </div>
-              <div class="export-field">
-                <div class="export-label">格式</div>
-                <div class="export-format" role="radiogroup" aria-label="导出格式">
-                  <label><input type="radio" name="exportFormat" value="pdf" checked> PDF</label>
-                  <label><input type="radio" name="exportFormat" value="markdown"> Markdown</label>
-                  <label><input type="radio" name="exportFormat" value="html"> HTML</label>
-                </div>
-              </div>
-              <label class="export-check">
-                <input type="checkbox" id="exportIncludeImages" checked>
-                包含图片
-              </label>
-              <div class="setting-actions">
-                <button id="exportTasksBtn" class="primary" style="background:var(--primary);color:var(--on-primary);border-color:var(--primary);">导出</button>
-              </div>
-            </div>
-          </div>
           <div class="settings-panel hidden" id="panel-defaults">
             <div class="setting-row">
               <div class="setting-label">常用默认</div>
@@ -259,6 +199,16 @@
                     <input type="checkbox" id="defFiltersExpanded">
                     启动时展开排序 / 时间 / 搜索
                   </label>
+                </div>
+                <div class="defaults-field">
+                  <div class="export-label">新建区</div>
+                  <div class="defaults-select-wrap" id="defCreatePanelWrap">
+                    <div id="defCreatePanelSelect" class="range-select defaults-trigger" tabindex="0">
+                      <span id="defCreatePanelSelected" class="range-value">固定在右侧</span>
+                      <span class="ms-arrow">▾</span>
+                    </div>
+                    <div id="defCreatePanelDropdown" class="range-dropdown hidden"></div>
+                  </div>
                 </div>
               </div>
               <div class="setting-actions defaults-actions">
@@ -326,13 +276,50 @@
 
   <main id="layout">
     <section id="list">
-      <div id="cards"><p class="empty">加载中…</p></div>
+      <div id="listScroll" class="list-scroll">
+        <div id="selectionBarSlot" class="selection-bar-slot" aria-hidden="true">
+          <div class="selection-bar-clip">
+            <div id="selectionBar" class="selection-bar" aria-live="polite">
+              <div class="selection-bar-left">
+                <span id="selectionCount" class="selection-count">已选 0 项</span>
+                <button id="selectionSelectAllBtn" type="button" class="selection-select-all-btn">全选</button>
+              </div>
+              <div class="selection-bar-actions">
+                <div class="selection-export-wrap">
+                  <button id="selectionExportBtn" type="button" class="selection-export-btn" aria-haspopup="menu" aria-expanded="false">导出</button>
+                  <div id="selectionExportMenu" class="list-export-menu selection-export-menu hidden" role="menu" aria-label="导出格式">
+                    <button type="button" role="menuitem" data-format="pdf">PDF</button>
+                    <button type="button" role="menuitem" data-format="markdown">Markdown</button>
+                    <button type="button" role="menuitem" data-format="html">HTML</button>
+                  </div>
+                </div>
+                <div class="selection-more-wrap">
+                  <button id="selectionMoreBtn" type="button" class="selection-more-btn" aria-haspopup="menu" aria-expanded="false">更多</button>
+                  <div id="selectionMoreMenu" class="list-export-menu selection-more-menu hidden" role="menu" aria-label="更多操作">
+                    <button type="button" role="menuitem" class="is-danger" data-action="trash">移入回收站</button>
+                  </div>
+                </div>
+                <button id="selectionCancelBtn" type="button" class="selection-cancel-btn">取消</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="cards"><p class="empty">加载中…</p></div>
+      </div>
       <div id="pagination" class="pagination hidden"></div>
     </section>
 
     <div id="layoutSplit" class="layout-split" role="separator" aria-orientation="vertical" aria-label="拖动调整创建区宽度，双击恢复默认" aria-valuemin="320" aria-valuemax="65" tabindex="0" title="拖动调整宽度 · 双击恢复默认"></div>
 
     <section id="createPanel">
+      <div class="create-chrome" role="toolbar" aria-label="新建区布局">
+        <button type="button" id="createPinBtn" class="create-chrome-btn is-pinned" aria-pressed="true" title="取消固定" aria-label="取消固定">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1z"/></svg>
+        </button>
+        <button type="button" id="createCollapseBtn" class="create-chrome-btn" title="收起新建区" aria-label="收起新建区">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4v16"/></svg>
+        </button>
+      </div>
       <div id="createEditor" class="rich-editor-host"></div>
       <div class="create-side" id="createSide">
         <div id="createTags" class="tag-select"></div>
@@ -351,6 +338,10 @@
       </div>
     </section>
   </main>
+
+  <button type="button" id="createFab" class="create-fab hidden" title="新建任务" aria-label="新建任务" hidden>
+    <span class="create-fab-plus" aria-hidden="true">+</span>
+  </button>
 
   <div id="detailOverlay" class="overlay hidden">
     <div id="detailModal" class="modal">
@@ -453,6 +444,7 @@
   <script src="filters.js"></script>
   <script src="create.js"></script>
   <script src="layoutSplit.js"></script>
+  <script src="createPanelMode.js"></script>
   <script src="clipboardQuick.js"></script>
   <script src="detail.js"></script>
   <script src="tags-ui.js"></script>
