@@ -3540,8 +3540,9 @@ body.is-resizing-layout .layout-split {
 }
 .create-chrome {
   position: absolute;
-  top: 4px;
-  right: 10px;
+  top: var(--create-chrome-top, 4px);
+  /* 与下方编辑框右缘对齐（同面板水平内边距） */
+  right: var(--create-pad-x, 12px);
   z-index: 6;
   display: flex;
   justify-content: flex-end;
@@ -3549,7 +3550,7 @@ body.is-resizing-layout .layout-split {
   gap: 4px;
   margin: 0;
   padding: 0;
-  height: 14px;
+  height: var(--create-chrome-h, 14px);
   line-height: 0;
   pointer-events: none;
 }
@@ -3690,10 +3691,11 @@ body.is-resizing-layout * {
   min-height: 0;
   border-left: 1px solid var(--border);
   background: var(--surface);
+  --create-pad-x: 12px;
   --create-chrome-top: 4px;
   --create-chrome-h: 14px;
   --create-chrome-gap: 4px;
-  padding: calc(var(--create-chrome-top) + var(--create-chrome-h) + var(--create-chrome-gap)) 12px 10px;
+  padding: calc(var(--create-chrome-top) + var(--create-chrome-h) + var(--create-chrome-gap)) var(--create-pad-x) 10px;
   overflow: hidden;
   box-sizing: border-box;
   display: flex;
