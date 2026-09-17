@@ -67,7 +67,12 @@
     document.removeEventListener('mouseup', onUp);
   }
 
+  function isInteractive() {
+    return !split.hidden && !split.classList.contains('hidden');
+  }
+
   split.addEventListener('mousedown', (e) => {
+    if (!isInteractive()) return;
     if (e.button !== 0) return;
     e.preventDefault();
     dragging = true;
@@ -79,10 +84,12 @@
   });
 
   split.addEventListener('dblclick', () => {
+    if (!isInteractive()) return;
     apply(DEFAULT_W, { persist: true });
   });
 
   split.addEventListener('keydown', (e) => {
+    if (!isInteractive()) return;
     const cur = panel.getBoundingClientRect().width;
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
@@ -100,6 +107,22 @@
   });
 
   window.addEventListener('resize', () => {
+    if (!isInteractive() || panel.hidden) return;
     apply(panel.getBoundingClientRect().width || load());
   });
+
+  window.__layoutSplit = {
+    reapplyWidth() {
+      if (panel.hidden) return;
+      apply(panel.getBoundingClientRect().width || load());
+    },
+    setInteractive(on) {
+      const enabled = !!on;
+      split.hidden = !enabled;
+      split.classList.toggle('hidden', !enabled);
+      split.style.pointerEvents = enabled ? '' : 'none';
+      split.tabIndex = enabled ? 0 : -1;
+      split.setAttribute('aria-hidden', enabled ? 'false' : 'true');
+    },
+  };
 })();
