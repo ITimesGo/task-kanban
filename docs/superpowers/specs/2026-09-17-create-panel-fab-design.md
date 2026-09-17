@@ -1,7 +1,7 @@
 # 新建区可收起（FAB + 固定）— 设计规格
 
 日期：2026-09-17  
-状态：规格已评审通过，待用户确认后写实现计划  
+状态：规格已评审通过，实现已合入（见 plans/2026-09-17-create-panel-fab.md）  
 范围：简易任务看板 — 主布局新建区、右下角 FAB、设置「默认视图」  
 相关代码：`index.html`（`#createPanel` / `#layoutSplit`）、`layoutSplit.js`、`create.js`、`viewDefaults.js`、`settings.js`
 

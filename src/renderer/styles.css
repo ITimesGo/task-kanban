@@ -196,7 +196,7 @@
   text-shadow: 1px 1px 0 #fff;
 }
 
-[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn),
+[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-chrome-btn):not(.create-fab),
 [data-skin="mario"] .filters-toggle,
 [data-skin="mario"] #settingsBtn,
 [data-skin="mario"] .setting-actions button,
@@ -211,7 +211,7 @@
   image-rendering: pixelated;
   transition: transform 80ms steps(2), box-shadow 80ms steps(2), background 80ms linear;
 }
-[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):hover,
+[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-chrome-btn):not(.create-fab):hover,
 [data-skin="mario"] .filters-toggle:hover,
 [data-skin="mario"] #settingsBtn:hover,
 [data-skin="mario"] .setting-actions button:hover,
@@ -222,7 +222,7 @@
   background: #fff0b0;
   color: var(--mario-brown);
 }
-[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):active,
+[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-chrome-btn):not(.create-fab):active,
 [data-skin="mario"] .filters-toggle:active,
 [data-skin="mario"] .setting-actions button:active {
   transform: translate(1px, 1px);
@@ -1323,7 +1323,7 @@
 }
 
 /* 次级按钮：圆角矩形（非胶囊）；排除侧栏 / 关闭 / 卡片勾选 / 缩略图删除 */
-[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(#settingsClose):not(#detailClose):not(#tagClose):not(.check):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del),
+[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(#settingsClose):not(#detailClose):not(#tagClose):not(.check):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-chrome-btn):not(.create-fab):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del),
 [data-skin="apple"] .filters-toggle,
 [data-skin="apple"] #settingsBtn,
 [data-skin="apple"] .icon-btn,
@@ -1357,7 +1357,7 @@
   width: 16px;
   height: 16px;
 }
-[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(#settingsClose):not(#detailClose):not(#tagClose):not(.check):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del):hover,
+[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(#settingsClose):not(#detailClose):not(#tagClose):not(.check):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-chrome-btn):not(.create-fab):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del):hover,
 [data-skin="apple"] .filters-toggle:hover,
 [data-skin="apple"] #settingsBtn:hover,
 [data-skin="apple"] .icon-btn:hover,
