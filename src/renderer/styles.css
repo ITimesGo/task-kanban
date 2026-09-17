@@ -3422,15 +3422,16 @@ body {
 [data-skin="apple"] .list-scroll {
   padding: var(--pane-inset-y, 12px) var(--list-pad-x) 0 calc(var(--card-tab-w, 26px) + 18px);
 }
-/* 新建区收起后：列表与分页左右等距；白卡片左右边与分页对齐（书签占用左侧内边距） */
+/* 新建区收起后：列表与分页左右等距（相对展开态整体收紧 10px） */
 #layout.is-create-collapsed .list-scroll,
 [data-skin="apple"] #layout.is-create-collapsed .list-scroll {
-  padding-right: calc(var(--card-tab-w, 26px) + var(--card-tab-out, 18px));
+  padding-left: calc(var(--card-tab-w, 26px) + var(--card-tab-out, 18px) - 10px);
+  padding-right: calc(var(--card-tab-w, 26px) + var(--card-tab-out, 18px) - 10px);
 }
 #layout.is-create-collapsed .pagination,
 [data-skin="apple"] #layout.is-create-collapsed .pagination {
-  margin-left: calc(var(--card-tab-w, 26px) + var(--card-tab-out, 18px));
-  margin-right: calc(var(--card-tab-w, 26px) + var(--card-tab-out, 18px));
+  margin-left: calc(var(--card-tab-w, 26px) + var(--card-tab-out, 18px) - 10px);
+  margin-right: calc(var(--card-tab-w, 26px) + var(--card-tab-out, 18px) - 10px);
 }
 .list-scroll::-webkit-scrollbar {
   width: 8px;
