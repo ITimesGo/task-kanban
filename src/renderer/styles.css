@@ -3421,6 +3421,11 @@ body {
 [data-skin="apple"] .list-scroll {
   padding: var(--pane-inset-y, 12px) var(--list-pad-x) 0 calc(var(--card-tab-w, 26px) + 18px);
 }
+/* 新建区收起后列表全宽：右侧与左侧书签留白对齐 */
+#layout.is-create-collapsed .list-scroll,
+[data-skin="apple"] #layout.is-create-collapsed .list-scroll {
+  padding-right: calc(var(--card-tab-w, 26px) + 18px);
+}
 .list-scroll::-webkit-scrollbar {
   width: 8px;
 }
@@ -3572,10 +3577,9 @@ body.is-resizing-layout .layout-split {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
-  line-height: 1;
-  font-weight: 400;
   padding: 0;
+  line-height: 0;
+  font-size: 0;
   opacity: 0;
   transform: scale(0.86);
   pointer-events: none;
@@ -3601,7 +3605,18 @@ body.is-resizing-layout .layout-split {
 }
 .create-fab-plus {
   display: block;
-  transform: translateY(-1px);
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  transform: none;
+  pointer-events: none;
+}
+.create-fab-plus svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 @media (prefers-reduced-motion: reduce) {
   #layout {
@@ -5608,6 +5623,10 @@ textarea:focus {
   border-top: 1px solid var(--border);
   background: var(--bg);
   box-sizing: border-box;
+}
+#layout.is-create-collapsed .pagination {
+  margin-left: calc(var(--card-tab-w, 26px) + 18px);
+  margin-right: calc(var(--card-tab-w, 26px) + 18px);
 }
 .pagination.hidden { display: none; }
 .pg-total {
