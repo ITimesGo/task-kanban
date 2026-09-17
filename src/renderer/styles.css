@@ -21,6 +21,11 @@
   --shadow-sm: 0 1px 3px rgba(var(--rgb), 0.12);
   --shadow-md: 0 10px 30px rgba(var(--rgb), 0.16);
   --transition: 150ms ease;
+  /* 状态书签：各皮肤可覆盖，避免生硬蓝/红 */
+  --status-go: var(--primary);
+  --status-stop: var(--danger);
+  --status-go-fg: var(--on-primary, #fff);
+  --status-stop-fg: #fff;
 }
 
 /* ========== 马里奥：像素马赛克整套皮肤 ========== */
@@ -28,6 +33,10 @@
   --pixel: 2px;
   --pixel-shadow: 2px;
   --pixel-shadow-lg: 3px;
+  --status-go: var(--mario-blue, #049cd8);
+  --status-stop: var(--mario-brick, #c84c0c);
+  --status-go-fg: #ffffff;
+  --status-stop-fg: #ffffff;
 }
 [data-skin="mario"] body {
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
@@ -119,28 +128,43 @@
 
 [data-skin="mario"] .card {
   background: #fff8e1;
-  border: var(--pixel) solid var(--mario-brown);
+  border: none;
+  --card-border: var(--mario-brown);
   box-shadow: var(--pixel-shadow-lg) var(--pixel-shadow-lg) 0 var(--mario-brown);
   image-rendering: pixelated;
 }
+[data-skin="mario"] .card::before {
+  border-width: var(--pixel);
+  border-style: solid;
+  border-color: var(--card-border);
+  border-radius: 0;
+}
 [data-skin="mario"] .card:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 var(--mario-brown);
+  transform: none;
+  box-shadow: var(--pixel-shadow-lg) var(--pixel-shadow-lg) 0 var(--mario-brown);
 }
 [data-skin="mario"] .card:not(.done) {
-  border-color: var(--primary);
+  --card-border: var(--primary);
   box-shadow: var(--pixel-shadow-lg) var(--pixel-shadow-lg) 0 var(--primary);
 }
-[data-skin="mario"] .card .check {
+[data-skin="mario"] .card .card-pick {
   border-radius: 0;
   border-width: var(--pixel);
   border-color: var(--mario-brown);
   box-shadow: var(--pixel-shadow) var(--pixel-shadow) 0 var(--mario-brown);
 }
-[data-skin="mario"] .card .check.done {
+[data-skin="mario"] .card .card-pick.on {
   background: var(--mario-gold);
   color: var(--mario-brown);
   border-color: var(--mario-brown);
+}
+[data-skin="mario"] .card-action {
+  border-radius: 0;
+  border-width: var(--pixel);
+  border-color: var(--mario-brown);
+  box-shadow: var(--pixel-shadow) var(--pixel-shadow) 0 var(--mario-brown);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 [data-skin="mario"] .modal,
@@ -172,7 +196,7 @@
   text-shadow: 1px 1px 0 #fff;
 }
 
-[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del),
+[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn),
 [data-skin="mario"] .filters-toggle,
 [data-skin="mario"] #settingsBtn,
 [data-skin="mario"] .setting-actions button,
@@ -187,7 +211,7 @@
   image-rendering: pixelated;
   transition: transform 80ms steps(2), box-shadow 80ms steps(2), background 80ms linear;
 }
-[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):hover,
+[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):hover,
 [data-skin="mario"] .filters-toggle:hover,
 [data-skin="mario"] #settingsBtn:hover,
 [data-skin="mario"] .setting-actions button:hover,
@@ -198,7 +222,7 @@
   background: #fff0b0;
   color: var(--mario-brown);
 }
-[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):active,
+[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):active,
 [data-skin="mario"] .filters-toggle:active,
 [data-skin="mario"] .setting-actions button:active {
   transform: translate(1px, 1px);
@@ -416,6 +440,18 @@
 
 [data-skin="night"] .card.done .text,
 [data-skin="night"] .card.done .doc-preview { color: var(--text-muted); }
+[data-skin="night"] {
+  --status-go: var(--primary);
+  --status-stop: #f87171;
+  --status-go-fg: #ffffff;
+  --status-stop-fg: #ffffff;
+}
+[data-skin="eyecare"] {
+  --status-go: var(--primary);
+  --status-stop: #b86f4c;
+  --status-go-fg: #ffffff;
+  --status-stop-fg: #ffffff;
+}
 [data-skin="eyecare"] body {
   background-image: linear-gradient(180deg, rgba(255,255,255,.18), transparent 120px);
 }
@@ -428,6 +464,10 @@
   --apple-blur: saturate(190%) blur(40px);
   --apple-stroke: rgba(60, 60, 67, 0.12);
   --apple-highlight: rgba(255, 255, 255, 0.65);
+  --status-go: var(--primary);
+  --status-stop: #ff3b30;
+  --status-go-fg: #ffffff;
+  --status-stop-fg: #ffffff;
 }
 [data-skin="apple"] body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -497,21 +537,22 @@
   padding-top: 8px;
   padding-bottom: 8px;
 }
+[data-skin="apple"] #layout {
+  --pane-inset-y: 12px;
+  background: transparent;
+  gap: 0;
+}
 [data-skin="apple"] #createPanel {
   background: var(--apple-glass-strong);
   border: 0.5px solid var(--apple-stroke);
   border-left: 0.5px solid var(--apple-stroke);
-  margin: 12px 12px 12px 0;
+  margin: var(--pane-inset-y) 12px var(--pane-inset-y) 0;
   border-radius: 22px;
   box-shadow:
     0 1px 0 var(--apple-highlight) inset,
     0 8px 32px rgba(15, 40, 80, 0.08);
   backdrop-filter: var(--apple-blur);
   -webkit-backdrop-filter: var(--apple-blur);
-}
-[data-skin="apple"] #layout {
-  background: transparent;
-  gap: 0;
 }
 [data-skin="apple"] .layout-split {
   flex-basis: 8px;
@@ -521,16 +562,20 @@
   content: none;
 }
 [data-skin="apple"] #list {
+  --list-pad-x: 16px;
+  --card-tab-w: 28px;
+  --card-tab-h: 28px;
   background: transparent;
   min-width: 0;
 }
 [data-skin="apple"] #cards {
-  padding: 12px 14px 8px;
+  padding: 0 0 8px;
 }
 [data-skin="apple"] .pagination {
   background: rgba(255, 255, 255, 0.35);
   border-top: 0.5px solid var(--apple-stroke);
-  margin: 0 10px 10px;
+  margin: 0 var(--list-pad-x) var(--pane-inset-y, 12px);
+  margin-right: calc(var(--list-pad-x) + 8px);
   border-radius: 16px;
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
@@ -542,30 +587,62 @@
 
 /* 玻璃卡片：半透明 + 细描边，少装饰 */
 [data-skin="apple"] .card {
+  --card-ctrl-inset: 10px;
+  --card-ctrl-size: 28px;
+  --card-pick-size: 20px;
+  --card-tab-w: 28px;
+  --card-tab-h: 28px;
+  --card-tab-out: 18px;
+  --card-border: var(--apple-stroke);
   background: var(--apple-glass-strong);
-  border: 0.5px solid var(--apple-stroke);
+  border: none;
   border-radius: 18px;
   box-shadow:
-    0 1px 0 var(--apple-highlight) inset,
     0 4px 18px rgba(15, 40, 80, 0.06);
   backdrop-filter: saturate(180%) blur(28px);
   -webkit-backdrop-filter: saturate(180%) blur(28px);
   margin-bottom: 10px;
+  transform: none;
+  transition:
+    opacity 0.28s ease,
+    transform 0.28s ease,
+    height 0.28s ease,
+    margin-bottom 0.28s ease,
+    padding-top 0.28s ease,
+    padding-bottom 0.28s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
 }
 [data-skin="apple"] .card::after { content: none; display: none; }
-[data-skin="apple"] .card:hover {
-  border-color: rgba(60, 60, 67, 0.18);
-  box-shadow:
-    0 1px 0 var(--apple-highlight) inset,
-    0 10px 28px rgba(15, 40, 80, 0.1);
-  transform: translateY(-1px);
-  background: var(--apple-glass-solid);
+[data-skin="apple"] .card::before {
+  background: inherit;
+  border: 0.5px solid var(--card-border);
+  backdrop-filter: inherit;
+  -webkit-backdrop-filter: inherit;
+  box-shadow: 0 1px 0 var(--apple-highlight) inset;
+}
+[data-skin="apple"] .card:hover,
+[data-skin="apple"] .card.is-selected,
+[data-skin="apple"] .card.select-mode,
+[data-skin="apple"] .card:focus-within,
+[data-skin="apple"] .card:has(.card-action.is-countdown) {
+  box-shadow: 0 10px 28px rgba(15, 40, 80, 0.12);
+  transform: none;
+  background: rgba(255, 255, 255, 0.48);
+  backdrop-filter: saturate(180%) blur(36px);
+  -webkit-backdrop-filter: saturate(180%) blur(36px);
 }
 [data-skin="apple"] .card:not(.done) {
+  --card-border: color-mix(in srgb, rgba(var(--rgb), 1) 35%, var(--apple-stroke));
   box-shadow:
-    0 1px 0 var(--apple-highlight) inset,
     0 0 0 1px rgba(var(--rgb), 0.1),
     0 4px 18px rgba(15, 40, 80, 0.06);
+}
+[data-skin="apple"] .card:not(.done):hover {
+  --card-border: color-mix(in srgb, rgba(var(--rgb), 1) 35%, var(--apple-stroke));
+  box-shadow:
+    0 0 0 1px rgba(var(--rgb), 0.1),
+    0 12px 32px rgba(15, 40, 80, 0.14);
 }
 /* 已完成：仍清晰可读，略降对比 */
 [data-skin="apple"] .card.done {
@@ -580,7 +657,7 @@
   background: rgba(255, 255, 255, 0.62);
   box-shadow:
     0 1px 0 var(--apple-highlight) inset,
-    0 6px 16px rgba(15, 40, 80, 0.07);
+    0 10px 24px rgba(15, 40, 80, 0.1);
   transform: none;
 }
 [data-skin="apple"] .card.done .text,
@@ -602,35 +679,310 @@
 [data-skin="apple"] .card.done .tag {
   opacity: 0.85;
 }
-[data-skin="apple"] .card .check {
+[data-skin="apple"] .card .card-pick,
+[data-skin="apple"] .card-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: var(--card-tab-w);
+  min-width: var(--card-tab-w);
+  max-width: var(--card-tab-w);
+  height: var(--card-tab-h, 28px);
+  min-height: var(--card-tab-h, 28px);
+  max-height: var(--card-tab-h, 28px);
   padding: 0;
-  border: 1.5px solid rgba(60, 60, 67, 0.29);
-  border-radius: 6px;
+  margin: 0;
+  border: 0.5px solid var(--card-border);
+  border-right: none;
+  border-radius: 14px 0 0 14px;
+  background: #ffffff;
+  box-shadow: -1px 2px 6px rgba(15, 40, 80, 0.05);
+  color: #8e8e93;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  transition:
+    background 0.22s ease,
+    border-color 0.22s ease,
+    color 0.22s ease,
+    box-shadow 0.22s ease;
+}
+[data-skin="apple"] .card .card-pick-ring {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid rgba(60, 60, 67, 0.28);
   background: #ffffff;
   color: transparent;
-  box-shadow: none;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
+  font-size: 9px;
+  transition: background 0.22s ease, border-color 0.22s ease, color 0.22s ease;
 }
-[data-skin="apple"] .card .check:hover {
-  border-color: var(--primary);
+[data-skin="apple"] .card-action-ico:not(.is-pending-mark),
+[data-skin="apple"] .card-action-label {
+  width: 14px;
+  height: 14px;
+  border: none;
+  background: transparent;
+  color: var(--status-go);
+  font-size: 15px;
+  transition: background 0.22s ease, border-color 0.22s ease, color 0.22s ease;
+}
+[data-skin="apple"] .card-action-ico.is-pending-mark {
+  width: 12px;
+  height: 12px;
+  border: 1.5px dashed color-mix(in srgb, var(--status-go) 55%, #fff);
+  border-radius: 999px;
+  background: transparent;
+  color: transparent;
+  font-size: 0;
+  transition: border-color 0.22s ease, background 0.22s ease;
+}
+[data-skin="apple"] .card-action:not(.is-done):not(.is-countdown) {
   background: #ffffff;
+  color: var(--status-go);
 }
-[data-skin="apple"] .card .check.done {
+[data-skin="apple"] .card-action.is-done:not(.is-countdown) {
+  background: #ffffff;
+  color: var(--status-stop);
+}
+[data-skin="apple"] .card .card-pick.on {
+  background: #ffffff;
+  border-color: var(--card-border);
+  box-shadow: none;
+  color: var(--primary);
+}
+[data-skin="apple"] .card .card-pick.on .card-pick-ring {
   background: var(--primary);
   border-color: var(--primary);
   color: #ffffff;
+  box-shadow: none;
+}
+[data-skin="apple"] .card-action.is-done {
+  background: #ffffff;
+  border-color: var(--card-border);
+  color: var(--status-stop);
+  outline: none;
+}
+[data-skin="apple"] .card-action.is-done .card-action-ico {
+  color: var(--status-stop);
+}
+[data-skin="apple"] .card-action:hover:not(.is-done):not(.is-countdown) {
+  background: var(--status-go);
+  border-color: var(--status-go);
+  color: var(--status-go-fg);
+}
+[data-skin="apple"] .card-action:hover:not(.is-done):not(.is-countdown) .card-action-ico {
+  color: var(--status-go-fg);
+}
+[data-skin="apple"] .card-action:hover:not(.is-done):not(.is-countdown) .card-action-ico.is-pending-mark {
+  border-color: color-mix(in srgb, var(--status-go-fg) 92%, transparent);
+  background: transparent;
+}
+[data-skin="apple"] .card-action.is-done:hover:not(.is-countdown) {
+  background: var(--status-stop);
+  border-color: var(--status-stop);
+  color: var(--status-stop-fg);
+}
+[data-skin="apple"] .card-action.is-done:hover:not(.is-countdown) .card-action-ico {
+  color: var(--status-stop-fg);
+}
+[data-skin="apple"] .card-action.is-countdown {
+  border: 0.5px solid transparent;
+  border-right: none;
+  border-radius: 14px 0 0 14px;
+  outline: none;
+  color: #fff;
+  box-shadow: none;
+}
+[data-skin="apple"] .card-action.is-countdown .card-action-label {
+  color: #fff;
+}
+[data-skin="apple"] .card-action.is-countdown.is-to-done {
+  background: var(--status-go);
+  border-color: var(--status-go);
+  color: var(--status-go-fg);
+}
+[data-skin="apple"] .card-action.is-countdown.is-to-pending {
+  background: var(--status-stop);
+  border-color: var(--status-stop);
+  color: var(--status-stop-fg);
+}
+[data-skin="apple"] .card-action.is-to-done .card-action-fill {
+  transform-origin: left center;
+  background: var(--status-stop);
+}
+[data-skin="apple"] .card-action.is-to-pending .card-action-fill {
+  transform-origin: left center;
+  background: var(--status-go);
+}
+[data-skin="apple"] .card:hover .card-pick,
+[data-skin="apple"] .card:hover .card-action {
+  box-shadow: -3px 8px 18px rgba(15, 40, 80, 0.14);
+}
+[data-skin="apple"] .card.done:hover .card-pick,
+[data-skin="apple"] .card.done:hover .card-action {
+  box-shadow: -2px 6px 14px rgba(15, 40, 80, 0.1);
 }
 [data-skin="apple"] .card .text {
   font-weight: 600;
   letter-spacing: -0.02em;
   color: #1d1d1f;
+}
+[data-skin="night"] .card:hover,
+[data-skin="night"] .card.is-selected,
+[data-skin="night"] .card.select-mode,
+[data-skin="night"] .card:focus-within,
+[data-skin="night"] .card:has(.card-action.is-countdown) {
+  background: color-mix(in srgb, var(--surface-2, #1c1c1e) 62%, transparent);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+[data-skin="night"] .card .card-pick,
+[data-skin="night"] .card-action {
+  background: var(--surface-2, #1c1c1e);
+  border-color: var(--border-strong, #3a3a3c);
+  color: var(--primary);
+}
+[data-skin="night"] .card .card-pick-ring {
+  border-color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+  background: color-mix(in srgb, var(--surface) 40%, transparent);
+}
+[data-skin="night"] .card .card-pick.on .card-pick-ring {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary, #fff);
+}
+[data-skin="night"] .card-action-ico:not(.is-pending-mark),
+[data-skin="night"] .card-action-label {
+  border: none;
+  background: transparent;
+  color: var(--primary);
+}
+[data-skin="night"] .card-action-ico.is-pending-mark {
+  border: 1.5px dashed color-mix(in srgb, var(--primary) 75%, #fff);
+  background: transparent;
+}
+[data-skin="night"] .card-action.is-done .card-action-ico {
+  color: var(--danger, #f56c6c);
+}
+
+[data-skin="eyecare"] .card .card-pick,
+[data-skin="eyecare"] .card-action {
+  background: color-mix(in srgb, var(--surface) 80%, var(--primary-soft, #d9f0dc));
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  color: var(--primary);
+}
+[data-skin="eyecare"] .card .card-pick-ring {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  background: color-mix(in srgb, #fff 55%, transparent);
+}
+[data-skin="eyecare"] .card-action-ico:not(.is-pending-mark),
+[data-skin="eyecare"] .card-action-label {
+  border: none;
+  background: transparent;
+  color: var(--primary);
+}
+[data-skin="eyecare"] .card-action-ico.is-pending-mark {
+  border: 1.5px dashed color-mix(in srgb, var(--primary) 70%, var(--border));
+  background: transparent;
+}
+[data-skin="eyecare"] .card-action.is-done .card-action-ico {
+  color: var(--danger, #f56c6c);
+}
+
+[data-skin="mario"] .card .card-pick,
+[data-skin="mario"] .card-action {
+  background: #fff8e1;
+  color: var(--mario-brown);
+  border-right: none;
+}
+[data-skin="mario"] .card .card-pick-ring {
+  border-radius: 0;
+  border-width: var(--pixel);
+  border-color: var(--mario-brown);
+  background: #ffe08a;
+}
+[data-skin="mario"] .card .card-pick.on .card-pick-ring {
+  background: var(--mario-gold);
+  border-color: var(--mario-brown);
+  color: var(--mario-brown);
+}
+[data-skin="mario"] .card-action-ico:not(.is-pending-mark),
+[data-skin="mario"] .card-action-label {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--status-go);
+  font-size: 15px;
+}
+[data-skin="mario"] .card-action-ico.is-pending-mark {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 0;
+  background-color: transparent;
+  /* 像素虚线框：用 status-go（管道蓝） */
+  background-image:
+    linear-gradient(90deg, var(--status-go) 0 3px, transparent 3px 5px, var(--status-go) 5px 8px, transparent 8px 10px, var(--status-go) 10px 14px),
+    linear-gradient(90deg, var(--status-go) 0 3px, transparent 3px 5px, var(--status-go) 5px 8px, transparent 8px 10px, var(--status-go) 10px 14px),
+    linear-gradient(180deg, var(--status-go) 0 3px, transparent 3px 5px, var(--status-go) 5px 8px, transparent 8px 10px, var(--status-go) 10px 14px),
+    linear-gradient(180deg, var(--status-go) 0 3px, transparent 3px 5px, var(--status-go) 5px 8px, transparent 8px 10px, var(--status-go) 10px 14px);
+  background-size: 100% 2px, 100% 2px, 2px 100%, 2px 100%;
+  background-position: top, bottom, left, right;
+  background-repeat: no-repeat;
+}
+[data-skin="mario"] .card-action.is-done .card-action-ico {
+  color: var(--status-stop);
+}
+[data-skin="mario"] .card-action:not(.is-done):not(.is-countdown) {
+  color: var(--status-go);
+}
+[data-skin="mario"] .card-action.is-done:not(.is-countdown) {
+  color: var(--status-stop);
+}
+/* 马里奥：hover/倒计时用管道蓝 ↔ 砖红，避免通用蓝红 */
+[data-skin="mario"] .card-action:hover:not(.is-done):not(.is-countdown) {
+  background: var(--status-go);
+  border-color: var(--mario-brown);
+  color: var(--status-go-fg);
+  box-shadow: var(--pixel-shadow) var(--pixel-shadow) 0 var(--mario-brown);
+}
+[data-skin="mario"] .card-action:hover:not(.is-done):not(.is-countdown) .card-action-ico {
+  color: var(--status-go-fg);
+}
+[data-skin="mario"] .card-action:hover:not(.is-done):not(.is-countdown) .card-action-ico.is-pending-mark {
+  background-image:
+    linear-gradient(90deg, #fff 0 3px, transparent 3px 5px, #fff 5px 8px, transparent 8px 10px, #fff 10px 14px),
+    linear-gradient(90deg, #fff 0 3px, transparent 3px 5px, #fff 5px 8px, transparent 8px 10px, #fff 10px 14px),
+    linear-gradient(180deg, #fff 0 3px, transparent 3px 5px, #fff 5px 8px, transparent 8px 10px, #fff 10px 14px),
+    linear-gradient(180deg, #fff 0 3px, transparent 3px 5px, #fff 5px 8px, transparent 8px 10px, #fff 10px 14px);
+}
+[data-skin="mario"] .card-action.is-done:hover:not(.is-countdown) {
+  background: var(--status-stop);
+  border-color: var(--mario-brown);
+  color: var(--status-stop-fg);
+  box-shadow: var(--pixel-shadow) var(--pixel-shadow) 0 var(--mario-brown);
+}
+[data-skin="mario"] .card-action.is-done:hover:not(.is-countdown) .card-action-ico {
+  color: var(--status-stop-fg);
+}
+[data-skin="mario"] .card-action.is-countdown.is-to-done {
+  background: var(--status-go);
+  border-color: var(--mario-brown);
+  color: var(--status-go-fg);
+  box-shadow: var(--pixel-shadow) var(--pixel-shadow) 0 var(--mario-brown);
+}
+[data-skin="mario"] .card-action.is-countdown.is-to-pending {
+  background: var(--status-stop);
+  border-color: var(--mario-brown);
+  color: var(--status-stop-fg);
+  box-shadow: var(--pixel-shadow) var(--pixel-shadow) 0 var(--mario-brown);
+}
+[data-skin="mario"] .card-action.is-to-done .card-action-fill {
+  background: var(--status-stop);
+}
+[data-skin="mario"] .card-action.is-to-pending .card-action-fill {
+  background: var(--status-go);
 }
 /* 卡片缩略图：极淡描边 + 轻阴影，避免灰框抢眼 */
 [data-skin="apple"] .card .thumb,
@@ -971,7 +1323,7 @@
 }
 
 /* 次级按钮：圆角矩形（非胶囊）；排除侧栏 / 关闭 / 卡片勾选 / 缩略图删除 */
-[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(#settingsClose):not(#detailClose):not(#tagClose):not(.check):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del),
+[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(#settingsClose):not(#detailClose):not(#tagClose):not(.check):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del),
 [data-skin="apple"] .filters-toggle,
 [data-skin="apple"] #settingsBtn,
 [data-skin="apple"] .icon-btn,
@@ -1005,7 +1357,7 @@
   width: 16px;
   height: 16px;
 }
-[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(#settingsClose):not(#detailClose):not(#tagClose):not(.check):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del):hover,
+[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(#settingsClose):not(#detailClose):not(#tagClose):not(.check):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del):hover,
 [data-skin="apple"] .filters-toggle:hover,
 [data-skin="apple"] #settingsBtn:hover,
 [data-skin="apple"] .icon-btn:hover,
@@ -1783,6 +2135,367 @@ body {
   color: var(--primary);
   border-color: var(--primary);
   background: var(--primary-soft);
+}
+.list-export-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 148px;
+  padding: 6px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--text) 14%, transparent);
+  z-index: 50;
+}
+.list-export-menu.hidden { display: none; }
+.list-export-menu button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 9px 12px !important;
+  border: none !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  text-align: left;
+  cursor: pointer;
+}
+.list-export-menu button:hover {
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface)) !important;
+  color: var(--primary) !important;
+}
+.selection-bar-slot {
+  --sel-side-extend: calc(var(--card-tab-w, 26px) + 18px - var(--list-pad-x, 24px));
+  --sel-bar-motion: 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-rows: 0fr;
+  width: calc(100% + var(--sel-side-extend));
+  max-width: calc(100% + var(--sel-side-extend));
+  margin: 0 0 0 calc(-1 * var(--sel-side-extend));
+  box-sizing: border-box;
+  transition:
+    grid-template-rows var(--sel-bar-motion),
+    margin-bottom var(--sel-bar-motion);
+}
+.selection-bar-slot.is-open {
+  grid-template-rows: 1fr;
+  margin-bottom: 10px;
+}
+.selection-bar-slot.is-leaving {
+  grid-template-rows: 0fr;
+  margin-bottom: 0;
+  transition-duration: 160ms;
+  transition-timing-function: ease-in;
+}
+.selection-bar-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+.selection-bar-slot.is-open:not(.is-leaving) .selection-bar-clip {
+  overflow: visible;
+}
+.selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 6px 10px 6px 12px;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  overflow: visible;
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition:
+    opacity var(--sel-bar-motion),
+    transform var(--sel-bar-motion);
+}
+.selection-bar-slot.is-open .selection-bar {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.selection-bar-slot.is-leaving .selection-bar {
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition-duration: 160ms;
+  transition-timing-function: ease-in;
+}
+@media (prefers-reduced-motion: reduce) {
+  .selection-bar-slot,
+  .selection-bar {
+    transition: none;
+  }
+  .selection-bar {
+    transform: none;
+  }
+}
+.selection-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.selection-count {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.selection-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.selection-export-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.selection-more-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.selection-select-all-btn,
+.selection-export-btn,
+.selection-more-btn,
+.selection-cancel-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+}
+.selection-select-all-btn,
+.selection-more-btn,
+.selection-cancel-btn {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+}
+.selection-select-all-btn:hover,
+.selection-more-btn:hover,
+.selection-cancel-btn:hover {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--primary);
+}
+.selection-export-btn {
+  color: var(--on-primary);
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.selection-export-btn:hover {
+  background: var(--primary-hover, var(--primary));
+}
+.selection-export-menu,
+.selection-more-menu {
+  right: 0;
+  left: auto;
+  top: calc(100% + 6px);
+  bottom: auto;
+  z-index: 60;
+}
+.selection-more-menu .is-danger {
+  color: var(--danger, #f56c6c);
+}
+.selection-more-menu .is-danger:hover {
+  background: color-mix(in srgb, var(--danger, #f56c6c) 12%, transparent);
+  color: var(--danger, #f56c6c);
+}
+[data-skin="apple"] .list-export-menu,
+[data-skin="apple"] .selection-export-menu,
+[data-skin="apple"] .selection-more-menu {
+  border: 0.5px solid rgba(60, 60, 67, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+}
+/* 苹果：玻璃二级条；顶边由 list-scroll 的 pane-inset 对齐，底边与卡片留缝 */
+[data-skin="apple"] .selection-bar {
+  margin: 0;
+  padding: 6px 10px 6px 14px;
+  min-height: 0;
+  border: 0.5px solid var(--apple-stroke);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    0 1px 0 var(--apple-highlight) inset,
+    0 2px 10px rgba(15, 40, 80, 0.04);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+[data-skin="apple"] .selection-count {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #8e8e93;
+}
+[data-skin="apple"] .selection-bar-actions {
+  gap: 8px;
+}
+[data-skin="apple"] .selection-select-all-btn,
+[data-skin="apple"] .selection-export-btn,
+[data-skin="apple"] .selection-more-btn,
+[data-skin="apple"] .selection-cancel-btn {
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+[data-skin="apple"] .selection-select-all-btn,
+[data-skin="apple"] .selection-more-btn,
+[data-skin="apple"] .selection-cancel-btn {
+  border: none;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+  box-shadow: none;
+}
+[data-skin="apple"] .selection-select-all-btn:hover,
+[data-skin="apple"] .selection-more-btn:hover,
+[data-skin="apple"] .selection-cancel-btn:hover {
+  border: none;
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--primary);
+}
+[data-skin="apple"] .selection-export-btn {
+  border: none;
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--primary) 28%, transparent);
+}
+[data-skin="apple"] .selection-export-btn:hover {
+  filter: brightness(1.06);
+}
+
+/* 黑夜：深色浮层二级条 */
+[data-skin="night"] #list {
+  --list-pad-x: 16px;
+}
+[data-skin="night"] .selection-bar {
+  margin: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-sm);
+}
+[data-skin="night"] .selection-count {
+  color: var(--text-muted);
+}
+[data-skin="night"] .selection-select-all-btn,
+[data-skin="night"] .selection-more-btn,
+[data-skin="night"] .selection-cancel-btn {
+  color: var(--primary-hover, var(--primary));
+}
+[data-skin="night"] .selection-select-all-btn:hover,
+[data-skin="night"] .selection-more-btn:hover,
+[data-skin="night"] .selection-cancel-btn:hover {
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+}
+[data-skin="night"] .selection-export-btn {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+}
+
+/* 护眼：豆沙绿轻量二级条 */
+[data-skin="eyecare"] #list {
+  --list-pad-x: 16px;
+}
+[data-skin="eyecare"] .selection-bar {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 78%, var(--primary-soft, #d9f0dc));
+  box-shadow: none;
+}
+[data-skin="eyecare"] .selection-count {
+  color: color-mix(in srgb, var(--text-muted) 85%, var(--primary));
+}
+[data-skin="eyecare"] .selection-select-all-btn:hover,
+[data-skin="eyecare"] .selection-more-btn:hover,
+[data-skin="eyecare"] .selection-cancel-btn:hover {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+/* 马里奥：像素块二级条 */
+[data-skin="mario"] #list {
+  --list-pad-x: 16px;
+}
+[data-skin="mario"] .selection-bar {
+  margin: 0;
+  padding: 6px 8px 6px 10px;
+  border: var(--pixel) solid var(--mario-brown);
+  border-radius: 0;
+  background: #ffe08a;
+  box-shadow: var(--pixel-shadow) var(--pixel-shadow) 0 var(--mario-brown);
+}
+[data-skin="mario"] .selection-count {
+  font-weight: 800;
+  color: var(--mario-brown);
+  text-shadow: 1px 1px 0 #fff;
+}
+[data-skin="mario"] .selection-select-all-btn,
+[data-skin="mario"] .selection-cancel-btn,
+[data-skin="mario"] .selection-more-btn,
+[data-skin="mario"] .selection-export-btn {
+  height: 26px;
+  border-radius: 0 !important;
+  border: var(--pixel) solid var(--mario-brown) !important;
+  font-weight: 700;
+  image-rendering: pixelated;
+  box-shadow: var(--pixel-shadow) var(--pixel-shadow) 0 var(--mario-brown);
+}
+[data-skin="mario"] .selection-select-all-btn,
+[data-skin="mario"] .selection-more-btn,
+[data-skin="mario"] .selection-cancel-btn {
+  background: #fff8e1 !important;
+  color: var(--mario-brown) !important;
+}
+[data-skin="mario"] .selection-select-all-btn:hover,
+[data-skin="mario"] .selection-more-btn:hover,
+[data-skin="mario"] .selection-cancel-btn:hover {
+  background: #fff0b0 !important;
+  color: var(--mario-brown) !important;
+  transform: translate(-1px, -1px);
+  box-shadow: var(--pixel-shadow-lg) var(--pixel-shadow-lg) 0 var(--mario-brown);
+}
+[data-skin="mario"] .selection-export-btn {
+  background: var(--primary) !important;
+  color: #fff !important;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.25);
+}
+[data-skin="mario"] .selection-export-btn:hover {
+  background: var(--primary-hover) !important;
+  transform: translate(-1px, -1px);
+  box-shadow: var(--pixel-shadow-lg) var(--pixel-shadow-lg) 0 var(--mario-brown);
+}
+[data-skin="mario"] .selection-export-menu,
+[data-skin="mario"] .selection-more-menu {
+  border: var(--pixel) solid var(--mario-brown);
+  border-radius: 0;
+  background: #fff8e1;
+  box-shadow: var(--pixel-shadow-lg) var(--pixel-shadow-lg) 0 var(--mario-brown);
 }
 .filters-badge {
   min-width: 18px;
@@ -2682,14 +3395,48 @@ body {
   background: var(--bg);
 }
 #list {
+  --list-pad-x: 24px;
+  --card-tab-w: 26px;
+  --card-tab-h: 30px;
+  position: relative;
   flex: 1 1 auto;
   min-width: 280px;
   min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg);
+  overflow: hidden;
 }
-#cards { flex: 1; min-width: 0; overflow-y: auto; padding: 20px 24px 0; }
+.list-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* 书签伸出 + 适中间距（避免过宽/过窄） */
+  padding: 12px var(--list-pad-x) 0 calc(var(--card-tab-w, 26px) + 18px);
+  box-sizing: border-box;
+}
+[data-skin="apple"] .list-scroll {
+  padding: var(--pane-inset-y, 12px) var(--list-pad-x) 0 calc(var(--card-tab-w, 26px) + 18px);
+}
+.list-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.list-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 35%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.list-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+#cards {
+  min-width: 0;
+  overflow: visible;
+  padding: 0 0 8px;
+}
 .card-ocr {
   margin-top: 10px;
   padding-top: 8px;
@@ -2744,6 +3491,100 @@ body.is-resizing-layout .layout-split {
 }
 .layout-split:focus-visible {
   outline: none;
+}
+#layout.is-create-collapsed #createPanel,
+#layout.is-create-collapsed #layoutSplit,
+#createPanel[hidden],
+#layoutSplit[hidden],
+.layout-split.hidden {
+  display: none !important;
+}
+.create-chrome {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin: 0 0 8px;
+}
+.create-chrome-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.create-chrome-btn:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.create-chrome-btn.is-pinned {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.create-fab {
+  position: fixed;
+  right: 20px;
+  bottom: calc(52px + 16px);
+  z-index: 35;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary, #fff);
+  box-shadow: var(--shadow-md, 0 4px 14px rgba(0, 0, 0, 0.18));
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 400;
+  padding: 0;
+}
+.create-fab.hidden,
+.create-fab[hidden] {
+  display: none !important;
+}
+.create-fab:hover {
+  filter: brightness(1.06);
+}
+.create-fab:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.create-fab-plus {
+  display: block;
+  transform: translateY(-1px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .create-fab {
+    transition: none;
+  }
+}
+[data-skin="mario"] .create-fab {
+  border-radius: 0;
+  border: var(--pixel, 2px) solid var(--mario-brown, #5c3317);
+  box-shadow: var(--pixel-shadow, 3px) var(--pixel-shadow, 3px) 0 var(--mario-brown, #5c3317);
+  font-weight: 800;
+}
+[data-skin="mario"] .create-chrome-btn {
+  border-radius: 0;
+}
+[data-skin="apple"] .create-fab {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.35) inset,
+    0 6px 18px rgba(15, 40, 80, 0.2);
+}
+[data-skin="apple"] .create-chrome-btn {
+  border-radius: 8px;
 }
 body.is-resizing-layout {
   cursor: col-resize !important;
@@ -3196,30 +4037,88 @@ body.is-media-resizing {
 
 /* ---- 任务卡片 ---- */
 .card {
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
+  --card-ctrl-inset: 10px;
+  --card-ctrl-size: 28px;
+  --card-pick-size: 20px;
+  --card-tab-w: 26px;
+  --card-tab-h: 30px;
+  --card-tab-out: 18px;
+  --card-border: var(--border);
+  position: relative;
+  display: block;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius);
   padding: 14px 16px;
   margin-bottom: 12px;
+  overflow: visible;
   cursor: pointer;
-  transition: all var(--transition);
+  isolation: isolate;
+  transition:
+    opacity 0.28s ease,
+    transform 0.28s ease,
+    height 0.28s ease,
+    margin-bottom 0.28s ease,
+    padding-top 0.28s ease,
+    padding-bottom 0.28s ease,
+    box-shadow var(--transition),
+    background 0.2s ease,
+    backdrop-filter 0.2s ease,
+    -webkit-backdrop-filter 0.2s ease;
+}
+/* 面板+边框叠在书签之上，书签从卡片下面探出 */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: inherit;
+  border: 1px solid var(--card-border);
+  backdrop-filter: inherit;
+  -webkit-backdrop-filter: inherit;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+.card.is-leaving {
+  pointer-events: none;
+  box-shadow: none !important;
+}
+.card.is-leaving::before {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none !important;
+  }
+  .card.is-leaving {
+    opacity: 0;
+  }
+}
+.card:not(.select-mode) {
+  padding-right: 14px;
 }
 .card:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 12px 32px rgba(15, 24, 40, 0.14);
 }
-.card:active { transform: scale(0.99); }
+/* 勾选 / 状态按钮出现时：整卡淡磨砂，布局不变 */
+.card:hover,
+.card.is-selected,
+.card.select-mode,
+.card:focus-within,
+.card:has(.card-action.is-countdown) {
+  background: color-mix(in srgb, var(--surface, #fff) 68%, transparent);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
 /* 未执行任务：用主题色半透明边框突出，更显眼 */
-.card:not(.done) { border-color: rgba(var(--rgb), 0.5); }
-.card:not(.done):hover { border-color: rgba(var(--rgb), 0.75); }
-.card.done { opacity: 0.65; }
+.card:not(.done) { --card-border: rgba(var(--rgb), 0.5); }
 .card.done .text,
 .card.done .doc-preview { text-decoration: line-through; color: var(--text-muted); }
 .card.done .doc-preview p { text-decoration: line-through; }
-.card .card-main { flex: 1; min-width: 0; }
+.card.done .card-time,
+.card.done .card-tags { opacity: 0.72; }
 .card .card-title { display: block; }
 .card .text {
   flex: 1 1 auto;
@@ -3380,28 +4279,219 @@ body.is-media-resizing {
 .card .card-att:hover .att-icon,
 .card .card-att:hover > span:last-child { color: var(--primary); }
 .card.done .card-att { opacity: 0.8; }
-.card .check {
+.card .card-pick,
+.card-action {
+  position: relative;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
-  margin-top: 2px;
-  width: 22px;
-  height: 22px;
+  width: var(--card-tab-w);
+  min-width: var(--card-tab-w);
+  max-width: var(--card-tab-w);
+  height: var(--card-tab-h, 30px);
+  min-height: var(--card-tab-h, 30px);
+  max-height: var(--card-tab-h, 30px);
   box-sizing: border-box;
-  border: 2px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-right: none;
+  border-radius: 9px 0 0 9px;
+  background: var(--surface, #fff);
+  box-shadow: -1px 2px 6px rgba(15, 24, 40, 0.04);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1;
-  color: transparent;
+  color: var(--text-muted, #909399);
   padding: 0;
-  transition: all var(--transition);
+  margin: 0;
+  flex: 0 0 auto;
+  opacity: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  appearance: none;
+  -webkit-appearance: none;
+  transition:
+    background 0.22s ease,
+    border-color 0.22s ease,
+    color 0.22s ease,
+    box-shadow 0.22s ease;
 }
-.card .check:hover { border-color: var(--primary); }
-.card .check.done { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.card-pick-ring {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid color-mix(in srgb, var(--text-muted, #909399) 55%, #fff);
+  border-radius: 999px;
+  box-sizing: border-box;
+  background: #fff;
+  color: transparent;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  transition: background 0.22s ease, border-color 0.22s ease, color 0.22s ease;
+}
+/* 状态：纯图标；过渡与书签一致 */
+.card-action-ico,
+.card-action-label {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border: none;
+  border-radius: 0;
+  box-sizing: border-box;
+  background: transparent;
+  color: var(--status-go);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  transition: background 0.22s ease, border-color 0.22s ease, color 0.22s ease;
+}
+/* 待执行：主题色虚线环，区别于勾选的实线灰圈 */
+.card-action-ico.is-pending-mark {
+  width: 12px;
+  height: 12px;
+  border: 1.5px dashed color-mix(in srgb, var(--status-go) 55%, #fff);
+  border-radius: 999px;
+  background: transparent;
+  color: transparent;
+  font-size: 0;
+}
+.card .card-pick.on {
+  background: color-mix(in srgb, var(--primary) 16%, var(--surface, #fff));
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  opacity: 1;
+}
+.card .card-pick.on .card-pick-ring {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary, #fff);
+}
+/* 卡片 hover：书签同步加深阴影（不改边框/颜色） */
+.card:hover .card-pick,
+.card:hover .card-action {
+  box-shadow: -3px 8px 18px rgba(15, 24, 40, 0.14);
+}
+.card.is-selected {
+  --card-border: color-mix(in srgb, var(--primary) 55%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+/* 书签贴齐卡片左边框，不压入 */
+.card-rail {
+  position: absolute;
+  top: 12px;
+  right: 100%;
+  left: auto;
+  margin-right: 0;
+  width: var(--card-tab-w);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  z-index: 0;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+.card-rail .card-pick,
+.card-rail .card-actions,
+.card-rail .card-action {
+  pointer-events: auto;
+}
+.card .card-main {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+}
+.card-actions {
+  display: contents;
+}
+.card-action.is-done .card-action-ico {
+  color: var(--status-stop);
+}
+/* 稳态：白底 + 语义色图标，不再铺主题色底 */
+.card-action:not(.is-done):not(.is-countdown) {
+  background: var(--surface, #fff);
+  color: var(--status-go);
+}
+.card-action.is-done:not(.is-countdown) {
+  background: var(--surface, #fff);
+  color: var(--status-stop);
+}
+/* hover = 倒计时起点色，点击后无跳色 */
+.card-action:hover:not(.is-done):not(.is-countdown) {
+  background: var(--status-go);
+  border-color: var(--status-go);
+  color: var(--status-go-fg);
+}
+.card-action:hover:not(.is-done):not(.is-countdown) .card-action-ico {
+  color: var(--status-go-fg);
+}
+.card-action:hover:not(.is-done):not(.is-countdown) .card-action-ico.is-pending-mark {
+  border-color: color-mix(in srgb, var(--status-go-fg) 92%, transparent);
+  background: transparent;
+}
+.card-action.is-done:hover:not(.is-countdown) {
+  background: var(--status-stop);
+  border-color: var(--status-stop);
+  color: var(--status-stop-fg);
+}
+.card-action.is-done:hover:not(.is-countdown) .card-action-ico {
+  color: var(--status-stop-fg);
+}
+.card-action.is-countdown {
+  color: var(--status-go-fg);
+  transition:
+    background 0.22s ease,
+    border-color 0.22s ease,
+    color 0.22s ease,
+    box-shadow 0.22s ease;
+}
+.card-action.is-countdown .card-action-label {
+  color: inherit;
+}
+/* 起点=hover 色，填充推进到目标色 */
+.card-action.is-countdown.is-to-done {
+  background: var(--status-go);
+  border-color: var(--status-go);
+  color: var(--status-go-fg);
+  box-shadow: none;
+}
+.card-action.is-countdown.is-to-pending {
+  background: var(--status-stop);
+  border-color: var(--status-stop);
+  color: var(--status-stop-fg);
+  box-shadow: none;
+}
+.card-action-fill {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  pointer-events: none;
+  z-index: 0;
+  transition: none;
+}
+.card-action.is-to-done .card-action-fill {
+  transform-origin: left center;
+  background: var(--status-stop);
+}
+.card-action.is-to-pending .card-action-fill {
+  transform-origin: left center;
+  background: var(--status-go);
+}
+.card-action-label {
+  position: relative;
+  z-index: 1;
+}
 
 /* ---- 创建面板 ---- */
 textarea {
@@ -4041,6 +5131,85 @@ textarea:focus {
   gap: 8px;
   margin-left: auto;
 }
+.detail-export-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.detail-export-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  min-width: 140px;
+  padding: 6px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--text) 14%, transparent);
+  z-index: 40;
+}
+.detail-export-menu.hidden { display: none; }
+/* 覆盖 #detailActions button 的描边/灰底/圆角，做成干净列表项 */
+#detailActions .detail-export-menu button,
+#detailActions .detail-export-menu button:not(.primary):not(.btn-link) {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  height: auto;
+  margin: 0;
+  padding: 9px 12px !important;
+  border: none !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  line-height: 1.3 !important;
+  text-align: left;
+  cursor: pointer;
+}
+#detailActions .detail-export-menu button:hover,
+#detailActions .detail-export-menu button:not(.primary):not(.btn-link):hover {
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface)) !important;
+  color: var(--primary) !important;
+  border-color: transparent !important;
+}
+[data-skin="apple"] #detailActions .detail-export-menu {
+  border: 0.5px solid rgba(60, 60, 67, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+  padding: 6px;
+}
+[data-skin="apple"] #detailActions .detail-export-menu button,
+[data-skin="apple"] #detailActions .detail-export-menu button:not(.primary):not(.btn-link) {
+  justify-content: flex-start;
+  min-height: 0 !important;
+  height: auto !important;
+  padding: 9px 12px !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: #1d1d1f !important;
+  font-weight: 500 !important;
+}
+[data-skin="apple"] #detailActions .detail-export-menu button:hover,
+[data-skin="apple"] #detailActions .detail-export-menu button:not(.primary):not(.btn-link):hover {
+  background: rgba(0, 122, 255, 0.1) !important;
+  color: var(--primary) !important;
+}
+[data-skin="mario"] #detailActions .detail-export-menu {
+  border-radius: 0;
+  border: var(--pixel, 2px) solid var(--mario-brown, #5c4033);
+  box-shadow: 3px 3px 0 var(--mario-brown, #5c4033);
+  padding: 4px;
+}
+[data-skin="mario"] #detailActions .detail-export-menu button,
+[data-skin="mario"] #detailActions .detail-export-menu button:not(.primary):not(.btn-link) {
+  border-radius: 0 !important;
+}
 .detail-footer-spacer { flex: 1; }
 #detailActions .btn-link {
   border: none;
@@ -4382,9 +5551,12 @@ textarea:focus {
   justify-content: center;
   flex-wrap: nowrap;
   gap: 10px;
+  margin: 0 var(--list-pad-x, 24px);
+  margin-right: calc(var(--list-pad-x, 24px) + 8px);
   padding: 10px 16px;
   border-top: 1px solid var(--border);
   background: var(--bg);
+  box-sizing: border-box;
 }
 .pagination.hidden { display: none; }
 .pg-total {

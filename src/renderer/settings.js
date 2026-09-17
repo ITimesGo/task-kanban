@@ -1,4 +1,4 @@
-const THEME_PRESETS = {
+﻿const THEME_PRESETS = {
   blue:   { label: '元素蓝', primary: '#409eff' },
   system: { label: '系统蓝', primary: '#007aff' },
   green:  { label: '翠绿',   primary: '#2f9e44' },
@@ -405,12 +405,6 @@ function switchSettingsPanel(panelId) {
   }
   if (panelId === 'panel-plugins') renderPluginList();
   if (panelId === 'panel-about') fillAboutPanel();
-  if (panelId === 'panel-export') {
-    closeExportDropdowns();
-    initExportPanelUI();
-  } else {
-    closeExportDropdowns();
-  }
   if (panelId === 'panel-defaults') fillViewDefaultsForm();
   else closeAllViewDefaultsDropdowns();
 }
@@ -890,7 +884,6 @@ function openSettings() {
   renderThemeOptions();
   bindThemeCustomControls();
   renderTrashList();
-  initExportPanelUI();
   renderPluginList();
   fillViewDefaultsForm();
   $('#settingsOverlay').classList.remove('hidden');
@@ -903,7 +896,6 @@ window.openSettingsTo = (panelId) => {
 };
 
 function closeSettings() {
-  closeExportDropdowns();
   closeAllViewDefaultsDropdowns();
   $('#settingsOverlay').classList.add('hidden');
 }
@@ -915,6 +907,7 @@ const VIEW_DEFAULTS_FIELDS = [
   { key: 'sortKey', optsName: 'VIEW_SORT_OPTS', wrap: 'defSortWrap', select: 'defSortSelect', selected: 'defSortSelected', dropdown: 'defSortDropdown' },
   { key: 'range', optsName: 'VIEW_RANGE_OPTS', wrap: 'defRangeWrap', select: 'defRangeSelect', selected: 'defRangeSelected', dropdown: 'defRangeDropdown' },
   { key: 'pageSize', optsName: 'VIEW_PAGE_SIZE_OPTS', wrap: 'defPageSizeWrap', select: 'defPageSizeSelect', selected: 'defPageSizeSelected', dropdown: 'defPageSizeDropdown', asPageSize: true },
+  { key: 'createPanelMode', optsName: 'VIEW_CREATE_PANEL_OPTS', wrap: 'defCreatePanelWrap', select: 'defCreatePanelSelect', selected: 'defCreatePanelSelected', dropdown: 'defCreatePanelDropdown' },
 ];
 
 function viewDefaultsOpts(field) {
@@ -924,6 +917,7 @@ function viewDefaultsOpts(field) {
   if (field.optsName === 'VIEW_FILTER_OPTS') return VIEW_FILTER_OPTS || [];
   if (field.optsName === 'VIEW_SORT_OPTS') return VIEW_SORT_OPTS || [];
   if (field.optsName === 'VIEW_RANGE_OPTS') return VIEW_RANGE_OPTS || [];
+  if (field.optsName === 'VIEW_CREATE_PANEL_OPTS') return VIEW_CREATE_PANEL_OPTS || [];
   return [];
 }
 
@@ -984,6 +978,7 @@ function readViewDefaultsForm() {
     range: draft.range,
     pageSize: Number(draft.pageSize),
     filtersExpanded: !!document.getElementById('defFiltersExpanded')?.checked,
+    createPanelMode: draft.createPanelMode === 'collapsed' ? 'collapsed' : 'docked',
   };
 }
 
@@ -1003,7 +998,6 @@ function persistViewDefaultsFromForm() {
       e.stopPropagation();
       const wasOpen = !dd.classList.contains('hidden');
       closeAllViewDefaultsDropdowns();
-      closeExportDropdowns();
       if (wasOpen) return;
       renderViewDefaultsDropdown(field);
       dd.classList.remove('hidden');
@@ -1037,7 +1031,7 @@ function persistViewDefaultsFromForm() {
   const resetBtn = document.getElementById('defResetBtn');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
-      if (!confirm('将常用默认恢复为出厂设置？\n（待执行 / 按创建时间 / 全部时间 / 50条 / 筛选栏收起）')) return;
+      if (!confirm('将常用默认恢复为出厂设置？\n（待执行 / 按创建时间 / 全部时间 / 50条 / 筛选栏收起 / 新建区固定在右侧）')) return;
       closeAllViewDefaultsDropdowns();
       const factory = typeof resetViewDefaults === 'function' ? resetViewDefaults() : null;
       fillViewDefaultsForm();
@@ -1286,209 +1280,6 @@ document.getElementById('backupImportBtn').addEventListener('click', async () =>
     await renderTrashList();
   } finally {
     btn.disabled = false;
-  }
-});
-
-let exportTagIds = [];
-let exportStatus = 'all';
-let exportSortKey = 'createdAt';
-
-const EXPORT_STATUS_OPTS = [
-  { key: 'all', label: '全部' },
-  { key: 'pending', label: '待执行' },
-  { key: 'done', label: '已执行' },
-];
-const EXPORT_SORT_OPTS = [
-  { key: 'createdAt', label: '创建时间' },
-  { key: 'statusAt', label: '状态处理时间' },
-  { key: 'updatedAt', label: '编辑更新时间' },
-];
-
-const exportTagEls = {
-  selected: null,
-  control: null,
-  options: null,
-  search: null,
-};
-
-function getExportTagEls() {
-  if (!exportTagEls.selected) {
-    exportTagEls.selected = document.getElementById('exportTagSelected');
-    exportTagEls.control = document.getElementById('exportTagControl');
-    exportTagEls.options = document.getElementById('exportTagOptions');
-    exportTagEls.search = document.getElementById('exportTagSearch');
-  }
-  return exportTagEls;
-}
-
-function closeExportTagDropdown() {
-  const dd = document.getElementById('exportTagDropdown');
-  const control = document.getElementById('exportTagControl');
-  if (dd) dd.classList.add('hidden');
-  if (control) control.classList.remove('open');
-}
-
-function closeExportStatusDropdown() {
-  const dd = document.getElementById('exportStatusDropdown');
-  const sel = document.getElementById('exportStatusSelect');
-  if (dd) dd.classList.add('hidden');
-  if (sel) sel.classList.remove('open');
-}
-
-function closeExportSortDropdown() {
-  const dd = document.getElementById('exportSortDropdown');
-  const sel = document.getElementById('exportSortSelect');
-  if (dd) dd.classList.add('hidden');
-  if (sel) sel.classList.remove('open');
-}
-
-function closeExportDropdowns() {
-  closeExportTagDropdown();
-  closeExportStatusDropdown();
-  closeExportSortDropdown();
-}
-
-function toggleExportTagDropdown() {
-  const dd = document.getElementById('exportTagDropdown');
-  const control = document.getElementById('exportTagControl');
-  if (!dd || !control) return;
-  const isOpen = !dd.classList.contains('hidden');
-  closeExportStatusDropdown();
-  closeExportSortDropdown();
-  dd.classList.toggle('hidden', isOpen);
-  control.classList.toggle('open', !isOpen);
-}
-
-function renderExportStatusDropdown() {
-  const box = document.getElementById('exportStatusDropdown');
-  const label = document.getElementById('exportStatusSelected');
-  if (!box || !label) return;
-  const cur = EXPORT_STATUS_OPTS.find((o) => o.key === exportStatus) || EXPORT_STATUS_OPTS[0];
-  label.textContent = cur.label;
-  box.innerHTML = EXPORT_STATUS_OPTS.map((o) =>
-    `<div class="range-option${o.key === exportStatus ? ' active' : ''}" data-key="${o.key}">${o.label}</div>`
-  ).join('');
-  box.querySelectorAll('.range-option').forEach((opt) => {
-    opt.addEventListener('click', (e) => {
-      e.stopPropagation();
-      exportStatus = opt.dataset.key;
-      renderExportStatusDropdown();
-      closeExportStatusDropdown();
-    });
-  });
-}
-
-function renderExportSortDropdown() {
-  const box = document.getElementById('exportSortDropdown');
-  const label = document.getElementById('exportSortSelected');
-  if (!box || !label) return;
-  const cur = EXPORT_SORT_OPTS.find((o) => o.key === exportSortKey) || EXPORT_SORT_OPTS[0];
-  label.textContent = cur.label;
-  box.innerHTML = EXPORT_SORT_OPTS.map((o) =>
-    `<div class="range-option${o.key === exportSortKey ? ' active' : ''}" data-key="${o.key}">${o.label}</div>`
-  ).join('');
-  box.querySelectorAll('.range-option').forEach((opt) => {
-    opt.addEventListener('click', (e) => {
-      e.stopPropagation();
-      exportSortKey = opt.dataset.key;
-      renderExportSortDropdown();
-      closeExportSortDropdown();
-    });
-  });
-}
-
-async function renderExportTagList() {
-  const tags = typeof tagList !== 'undefined' && tagList.length
-    ? tagList
-    : await API.getAllTags();
-  const els = getExportTagEls();
-  ui.renderTagFilter(tags, exportTagIds, (id, checked) => {
-    if (checked) {
-      if (!exportTagIds.includes(id)) exportTagIds.push(id);
-    } else {
-      exportTagIds = exportTagIds.filter((x) => x !== id);
-    }
-    ui.renderTagSelected(exportTagIds, els);
-  }, els);
-  ui.renderTagSelected(exportTagIds, els);
-}
-
-function initExportPanelUI() {
-  renderExportStatusDropdown();
-  renderExportSortDropdown();
-  renderExportTagList();
-}
-
-function collectExportOptions() {
-  const formatEl = document.querySelector('input[name="exportFormat"]:checked');
-  return {
-    tagIds: exportTagIds.slice(),
-    status: exportStatus || 'all',
-    sortKey: exportSortKey || 'createdAt',
-    format: (formatEl && formatEl.value) || 'pdf',
-    includeImages: document.getElementById('exportIncludeImages').checked,
-  };
-}
-
-document.getElementById('exportTagControl').addEventListener('click', (e) => {
-  e.stopPropagation();
-  toggleExportTagDropdown();
-});
-document.getElementById('exportTagClear').addEventListener('click', (e) => {
-  e.stopPropagation();
-  if (!exportTagIds.length) return;
-  exportTagIds = [];
-  ui.renderTagSelected(exportTagIds, getExportTagEls());
-  renderExportTagList();
-});
-document.getElementById('exportTagDropdown').addEventListener('click', (e) => e.stopPropagation());
-
-document.getElementById('exportStatusSelect').addEventListener('click', (e) => {
-  e.stopPropagation();
-  const dd = document.getElementById('exportStatusDropdown');
-  const sel = document.getElementById('exportStatusSelect');
-  const isOpen = !dd.classList.contains('hidden');
-  closeExportTagDropdown();
-  closeExportSortDropdown();
-  renderExportStatusDropdown();
-  dd.classList.toggle('hidden', isOpen);
-  sel.classList.toggle('open', !isOpen);
-});
-document.getElementById('exportStatusDropdown').addEventListener('click', (e) => e.stopPropagation());
-
-document.getElementById('exportSortSelect').addEventListener('click', (e) => {
-  e.stopPropagation();
-  const dd = document.getElementById('exportSortDropdown');
-  const sel = document.getElementById('exportSortSelect');
-  const isOpen = !dd.classList.contains('hidden');
-  closeExportTagDropdown();
-  closeExportStatusDropdown();
-  renderExportSortDropdown();
-  dd.classList.toggle('hidden', isOpen);
-  sel.classList.toggle('open', !isOpen);
-});
-document.getElementById('exportSortDropdown').addEventListener('click', (e) => e.stopPropagation());
-
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('#exportTagWrap')) closeExportTagDropdown();
-  if (!e.target.closest('#exportStatusWrap')) closeExportStatusDropdown();
-  if (!e.target.closest('#exportSortWrap')) closeExportSortDropdown();
-});
-
-document.getElementById('exportTasksBtn').addEventListener('click', async () => {
-  const btn = document.getElementById('exportTasksBtn');
-  btn.disabled = true;
-  btn.textContent = '导出中…';
-  try {
-    const res = await API.exportTasks(collectExportOptions());
-    if (!res || !res.ok) {
-      if (res && res.error !== '已取消') alert(res.error || '导出失败');
-      return;
-    }
-    alert(`已导出 ${res.count || 0} 条任务：\n${res.path}`);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '导出';
   }
 });
 
