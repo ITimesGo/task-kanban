@@ -3399,6 +3399,7 @@ body {
   --list-pad-x: 24px;
   --card-tab-w: 26px;
   --card-tab-h: 30px;
+  --card-tab-out: 18px;
   position: relative;
   flex: 1 1 auto;
   min-width: 280px;
@@ -3421,10 +3422,18 @@ body {
 [data-skin="apple"] .list-scroll {
   padding: var(--pane-inset-y, 12px) var(--list-pad-x) 0 calc(var(--card-tab-w, 26px) + 18px);
 }
-/* 新建区收起后列表全宽：右侧与左侧书签留白对齐 */
+/* 新建区收起后：白卡片与分页对齐；外侧留白按「书签外缘」对称，避免白底看起来偏右 */
 #layout.is-create-collapsed .list-scroll,
 [data-skin="apple"] #layout.is-create-collapsed .list-scroll {
-  padding-right: calc(var(--card-tab-w, 26px) + 18px);
+  padding-right: var(--card-tab-out, 18px);
+}
+#layout.is-create-collapsed .pagination {
+  margin-left: calc(var(--card-tab-w, 26px) + var(--card-tab-out, 18px));
+  margin-right: var(--card-tab-out, 18px);
+}
+[data-skin="apple"] #layout.is-create-collapsed .pagination {
+  margin-left: calc(var(--card-tab-w, 26px) + var(--card-tab-out, 18px));
+  margin-right: var(--card-tab-out, 18px);
 }
 .list-scroll::-webkit-scrollbar {
   width: 8px;
@@ -5623,10 +5632,6 @@ textarea:focus {
   border-top: 1px solid var(--border);
   background: var(--bg);
   box-sizing: border-box;
-}
-#layout.is-create-collapsed .pagination {
-  margin-left: calc(var(--card-tab-w, 26px) + 18px);
-  margin-right: calc(var(--card-tab-w, 26px) + 18px);
 }
 .pagination.hidden { display: none; }
 .pg-total {
