@@ -140,6 +140,9 @@ async function createTask() {
     onPickMedia: () => window.onAddImage(),
   });
   window.createEditor = createEditor;
+  const chrome = document.querySelector('#createPanel > .create-chrome');
+  const bar = host.querySelector('.rich-toolbar');
+  if (chrome && bar) bar.appendChild(chrome);
 })();
 
 const addImageBtn = document.getElementById('addImageBtn');
