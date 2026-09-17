@@ -2,7 +2,7 @@
 initTheme();
 initAlwaysOnTop();
 if (typeof applySavedViewDefaults === 'function') {
-  applySavedViewDefaults({ refreshList: false });
+  applySavedViewDefaults({ refreshList: false, coldStart: true });
 }
 loadTags();
 refresh();

@@ -8,6 +8,7 @@ const VIEW_FACTORY_DEFAULTS = Object.freeze({
   range: 'all',
   pageSize: 50,
   filtersExpanded: false,
+  createPanelMode: 'docked',
 });
 
 const VIEW_FILTER_OPTS = [
@@ -30,6 +31,15 @@ const VIEW_RANGE_OPTS = [
 ];
 const VIEW_PAGE_SIZE_OPTS = [50, 100, 200];
 
+const VIEW_CREATE_PANEL_OPTS = [
+  { key: 'docked', label: '固定在右侧' },
+  { key: 'collapsed', label: '收起为加号' },
+];
+
+function normalizeCreatePanelMode(m) {
+  return m === 'collapsed' ? 'collapsed' : 'docked';
+}
+
 function cloneViewDefaults(src) {
   return {
     filter: src.filter,
@@ -37,6 +47,7 @@ function cloneViewDefaults(src) {
     range: src.range,
     pageSize: src.pageSize,
     filtersExpanded: !!src.filtersExpanded,
+    createPanelMode: normalizeCreatePanelMode(src.createPanelMode),
   };
 }
 
@@ -49,6 +60,9 @@ function normalizeViewDefaults(raw) {
   const ps = Number(raw.pageSize);
   if (VIEW_PAGE_SIZE_OPTS.includes(ps)) base.pageSize = ps;
   if (typeof raw.filtersExpanded === 'boolean') base.filtersExpanded = raw.filtersExpanded;
+  if (raw.createPanelMode === 'collapsed' || raw.createPanelMode === 'docked') {
+    base.createPanelMode = raw.createPanelMode;
+  }
   return base;
 }
 
@@ -74,7 +88,7 @@ function resetViewDefaults() {
 }
 
 /** 把偏好写入当前会话状态，并刷新顶栏 UI */
-function applyViewDefaultsToSession(prefs, { refreshList = true } = {}) {
+function applyViewDefaultsToSession(prefs, { refreshList = true, coldStart = false } = {}) {
   const p = normalizeViewDefaults(prefs);
   filter = p.filter;
   sortKey = p.sortKey;
@@ -92,10 +106,38 @@ function applyViewDefaultsToSession(prefs, { refreshList = true } = {}) {
   const pageSizeLabel = document.getElementById('pageSizeLabel');
   if (pageSizeLabel) pageSizeLabel.textContent = `${pageSize} 条/页`;
 
+  if (typeof applyCreatePanelMode === 'function') {
+    const prev = typeof getCreatePanelMode === 'function' ? getCreatePanelMode() : null;
+    let reason = 'mode-change';
+    if (coldStart) reason = 'cold';
+    else if (prev === p.createPanelMode) reason = 'same-mode';
+    applyCreatePanelMode(p.createPanelMode, { reason });
+  }
+
   if (refreshList && typeof refresh === 'function') refresh();
   return p;
 }
 
 function applySavedViewDefaults(opts) {
   return applyViewDefaultsToSession(loadViewDefaults(), opts);
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    VIEW_DEFAULTS_KEY,
+    VIEW_FACTORY_DEFAULTS,
+    VIEW_FILTER_OPTS,
+    VIEW_SORT_OPTS,
+    VIEW_RANGE_OPTS,
+    VIEW_PAGE_SIZE_OPTS,
+    VIEW_CREATE_PANEL_OPTS,
+    normalizeCreatePanelMode,
+    cloneViewDefaults,
+    normalizeViewDefaults,
+    loadViewDefaults,
+    saveViewDefaults,
+    resetViewDefaults,
+    applyViewDefaultsToSession,
+    applySavedViewDefaults,
+  };
 }
