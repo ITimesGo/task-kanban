@@ -140,10 +140,10 @@ async function createTask() {
     onPickMedia: () => window.onAddImage(),
   });
   window.createEditor = createEditor;
-  // 固定/收起保持在面板顶部右上角，不进工具栏
+  // 固定/收起是面板布局控件，放在编辑框上方（不进工具栏、不进编辑框）
   const panel = document.getElementById('createPanel');
   const chrome = document.querySelector('.create-chrome');
-  if (panel && chrome && chrome.parentElement !== panel) {
+  if (panel && host && chrome && chrome.parentElement !== panel) {
     panel.insertBefore(chrome, host);
   }
 })();
