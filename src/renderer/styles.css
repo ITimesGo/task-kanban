@@ -3422,18 +3422,15 @@ body {
 [data-skin="apple"] .list-scroll {
   padding: var(--pane-inset-y, 12px) var(--list-pad-x) 0 calc(var(--card-tab-w, 26px) + 18px);
 }
-/* 新建区收起后：白卡片与分页对齐；外侧留白按「书签外缘」对称，避免白底看起来偏右 */
+/* 新建区收起后：列表与分页左右等距；白卡片左右边与分页对齐（书签占用左侧内边距） */
 #layout.is-create-collapsed .list-scroll,
 [data-skin="apple"] #layout.is-create-collapsed .list-scroll {
-  padding-right: var(--card-tab-out, 18px);
+  padding-right: calc(var(--card-tab-w, 26px) + var(--card-tab-out, 18px));
 }
-#layout.is-create-collapsed .pagination {
-  margin-left: calc(var(--card-tab-w, 26px) + var(--card-tab-out, 18px));
-  margin-right: var(--card-tab-out, 18px);
-}
+#layout.is-create-collapsed .pagination,
 [data-skin="apple"] #layout.is-create-collapsed .pagination {
   margin-left: calc(var(--card-tab-w, 26px) + var(--card-tab-out, 18px));
-  margin-right: var(--card-tab-out, 18px);
+  margin-right: calc(var(--card-tab-w, 26px) + var(--card-tab-out, 18px));
 }
 .list-scroll::-webkit-scrollbar {
   width: 8px;
