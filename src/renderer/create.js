@@ -140,9 +140,12 @@ async function createTask() {
     onPickMedia: () => window.onAddImage(),
   });
   window.createEditor = createEditor;
-  const chrome = document.querySelector('#createPanel > .create-chrome');
-  const bar = host.querySelector('.rich-toolbar');
-  if (chrome && bar) bar.appendChild(chrome);
+  // 固定/收起保持在面板顶部右上角，不进工具栏
+  const panel = document.getElementById('createPanel');
+  const chrome = document.querySelector('.create-chrome');
+  if (panel && chrome && chrome.parentElement !== panel) {
+    panel.insertBefore(chrome, host);
+  }
 })();
 
 const addImageBtn = document.getElementById('addImageBtn');
