@@ -68,7 +68,9 @@
   }
 
   function isInteractive() {
-    return !split.hidden && !split.classList.contains('hidden');
+    const layoutEl = document.getElementById('layout');
+    if (layoutEl && layoutEl.classList.contains('is-create-collapsed')) return false;
+    return !split.classList.contains('is-inactive');
   }
 
   split.addEventListener('mousedown', (e) => {
@@ -113,13 +115,14 @@
 
   window.__layoutSplit = {
     reapplyWidth() {
+      const layoutEl = document.getElementById('layout');
+      if (layoutEl && layoutEl.classList.contains('is-create-collapsed')) return;
       if (panel.hidden) return;
       apply(panel.getBoundingClientRect().width || load());
     },
     setInteractive(on) {
       const enabled = !!on;
-      split.hidden = !enabled;
-      split.classList.toggle('hidden', !enabled);
+      split.classList.toggle('is-inactive', !enabled);
       split.style.pointerEvents = enabled ? '' : 'none';
       split.tabIndex = enabled ? 0 : -1;
       split.setAttribute('aria-hidden', enabled ? 'false' : 'true');
