@@ -1,7 +1,7 @@
 # 新建区可收起（FAB + 固定）— 设计规格
 
 日期：2026-09-17  
-状态：已与用户确认交互；规格评审修订中  
+状态：规格已评审通过，待用户确认后写实现计划  
 范围：简易任务看板 — 主布局新建区、右下角 FAB、设置「默认视图」  
 相关代码：`index.html`（`#createPanel` / `#layoutSplit`）、`layoutSplit.js`、`create.js`、`viewDefaults.js`、`settings.js`
 
@@ -77,7 +77,7 @@
 | 启动且偏好 docked | docked | （无关，视为开） | — |
 | 启动且偏好 collapsed | collapsed | false | — |
 | collapsed 下点 FAB | collapsed | true | 不改 mode |
-| 点「收起」 | collapsed | false | 保存 `collapsed` |
+| 点「收起」（含 docked 下收起） | collapsed | false | 保存 `collapsed` |
 | 点「固定」（未钉 → 钉） | docked | true/开 | 保存 `docked` |
 | 点「固定」（钉 → 取消钉） | collapsed | true（保持展开） | 保存 `collapsed` |
 | 创建任务成功 | 不变 | 不变 | 不清 mode；表单按现逻辑清空 |
@@ -126,7 +126,8 @@
 - 控件：分段或下拉二选一  
   - `固定在右侧` → `docked`  
   - `收起为加号` → `collapsed`
-- 保存默认视图时写入 `createPanelMode`；应用默认视图 / 启动 `applySavedViewDefaults` 时调用同一套 `applyCreatePanelMode`。
+- 与其它默认视图项一致：**变更时写入 localStorage**；**会话布局**仅在「立即应用」或冷启动 `applySavedViewDefaults` 时套用（避免每点一下设置就挤动主界面）。
+- 保存默认视图时写入 `createPanelMode`；应用默认视图 / 启动时调用同一套 `applyCreatePanelMode`（遵守 §2.2.1）。
 - 面板上固定/收起成功后：`saveViewDefaults({ ...loadViewDefaults(), createPanelMode })`（或等价局部更新），并刷新设置页若正打开则同步草稿展示。
 
 重置默认视图：`createPanelMode` 回到出厂 `docked`。
@@ -165,8 +166,9 @@
 3. 展开后点固定 → 重启为 docked、无 FAB。  
 4. docked 下取消固定 → 仍展开；再收起 → FAB；重启为 collapsed。  
 5. 设置改默认并保存 / 重置：与面板状态一致。  
-6. 拖宽在隐藏后再展开仍恢复。  
-7. apple / night / eyecare / mario 下 FAB 与按钮无明显违和。
+6. collapsed 且临时展开时，仅改每页条数等无关项并「立即应用」→ 面板仍开、FAB 仍隐。  
+7. 拖宽在隐藏后再展开仍恢复。  
+8. apple / night / eyecare / mario 下 FAB 与按钮无明显违和。
 
 ---
 
