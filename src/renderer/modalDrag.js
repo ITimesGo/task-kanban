@@ -205,8 +205,11 @@
         Math.floor(overlay.clientHeight * lim.maxHRatio),
         Math.max(lim.minH, overlay.clientHeight - origTop)
       );
-      const nextW = clamp(origW + (e.clientX - startX), lim.minW, maxW);
-      const nextH = clamp(origH + (e.clientY - startY), lim.minH, maxH);
+      // 内容少时自然高度/宽度可能低于配置下限；拖动时不要瞬间钳上去造成闪跳
+      const floorW = Math.min(lim.minW, origW);
+      const floorH = Math.min(lim.minH, origH);
+      const nextW = clamp(origW + (e.clientX - startX), floorW, maxW);
+      const nextH = clamp(origH + (e.clientY - startY), floorH, maxH);
       modal.style.width = `${nextW}px`;
       modal.style.height = `${nextH}px`;
     };

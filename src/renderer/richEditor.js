@@ -151,6 +151,9 @@ function createRichEditor(host, options) {
       alert('最多添加10张图片');
       return false;
     }
+    if (value && typeof value === 'object' && value.srcPath && typeof API !== 'undefined' && API.allowMediaSrcPath) {
+      try { API.allowMediaSrcPath(value.srcPath); } catch (_) { /* ignore */ }
+    }
     let previewUrl = '';
     if (typeof value === 'string' && value.startsWith('data:')) previewUrl = value;
     else if (value && value.previewUrl) previewUrl = value.previewUrl;
@@ -248,14 +251,6 @@ function createRichEditor(host, options) {
     return null;
   }
 
-  function isInlineOn(kind) {
-    try {
-      if (kind === 'bold' && document.queryCommandState('bold')) return true;
-      if (kind === 'italic' && document.queryCommandState('italic')) return true;
-    } catch (_) {}
-    return !!closestInlineFormat(kind);
-  }
-
   function placeCaret(node, offset) {
     const sel = window.getSelection();
     if (!sel || !node) return;
@@ -276,6 +271,125 @@ function createRichEditor(host, options) {
     return marker;
   }
 
+  function visibleText(el) {
+    return (el && el.textContent || '').replace(/\u200b/g, '').trim();
+  }
+
+  function currentBlockEl() {
+    let el = selectionAnchorEl();
+    while (el && el !== surface) {
+      if (el.nodeType === 1 && /^(P|DIV|LI|H[1-6])$/i.test(el.tagName)) return el;
+      el = el.parentElement;
+    }
+    return surface.querySelector('p') || surface;
+  }
+
+  function inlineSelector(kind) {
+    return kind === 'bold' ? 'b,strong' : 'i,em';
+  }
+
+  function unwrapEmptyInlines(kind, root) {
+    const scope = root || surface;
+    [...scope.querySelectorAll(inlineSelector(kind))].forEach((el) => {
+      if (!el.isConnected) return;
+      if (visibleText(el) || el.querySelector('img,video')) return;
+      unwrapNode(el);
+    });
+  }
+
+  function placeCaretInside(el) {
+    if (!el) return;
+    surface.focus();
+    const range = document.createRange();
+    range.setStart(el, 0);
+    range.collapse(true);
+    const sel = window.getSelection();
+    if (!sel) return;
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  /**
+   * 当前块没有可见文字时：不用 execCommand（typing style 选中零宽字符再 toggle
+   * 反而会加粗选区，关不掉）。改为手写 <b>/<em> 壳，关闭时拆壳并重置块。
+   */
+  function toggleInlineEmpty(kind) {
+    const cmd = kind === 'bold' ? 'bold' : 'italic';
+    const block = currentBlockEl();
+    const hasShell = !!(closestInlineFormat(kind) || (block && block.querySelector(inlineSelector(kind))));
+
+    if (hasShell) {
+      unwrapEmptyInlines(kind, block);
+      unwrapEmptyInlines(kind, surface);
+      if (block && block !== surface) {
+        block.innerHTML = '<br>';
+        placeCaretIn(block, false);
+      } else {
+        surface.innerHTML = '<p><br></p>';
+        placeCaretIn(surface.querySelector('p'), false);
+      }
+      try {
+        if (document.queryCommandState(cmd)) document.execCommand(cmd);
+      } catch (_) {}
+      try {
+        if (document.queryCommandState(cmd)) {
+          surface.contentEditable = 'false';
+          void surface.offsetWidth;
+          surface.contentEditable = 'true';
+          surface.focus();
+          const p = surface.querySelector('p') || block;
+          if (p) {
+            if (!p.querySelector('br') && !visibleText(p)) p.innerHTML = '<br>';
+            placeCaretIn(p, false);
+          }
+          if (document.queryCommandState(cmd)) document.execCommand(cmd);
+        }
+      } catch (_) {}
+      return;
+    }
+
+    // 无壳：先清残留 typing style，再显式插入壳（保证能再次关掉）
+    try {
+      if (document.queryCommandState(cmd)) {
+        surface.contentEditable = 'false';
+        void surface.offsetWidth;
+        surface.contentEditable = 'true';
+        surface.focus();
+        const p = (block && block !== surface ? block : surface.querySelector('p')) || surface;
+        if (p && p !== surface && !visibleText(p)) p.innerHTML = '<br>';
+        placeCaretIn(p === surface ? (surface.querySelector('p') || surface) : p, false);
+        if (document.queryCommandState(cmd)) document.execCommand(cmd);
+      }
+    } catch (_) {}
+
+    const target = block && block !== surface ? block : (surface.querySelector('p') || surface);
+    const el = document.createElement(kind === 'bold' ? 'b' : 'em');
+    el.appendChild(document.createElement('br'));
+    target.innerHTML = '';
+    target.appendChild(el);
+    placeCaretInside(el);
+  }
+
+  function isEmptyEditingContext() {
+    if (!visibleText(surface)) return true;
+    const block = currentBlockEl();
+    return !!(block && !visibleText(block));
+  }
+
+  function isInlineOn(kind) {
+    if (closestInlineFormat(kind)) return true;
+    // 空块无 DOM 壳时不采信 queryCommandState，否则高亮会永久卡死
+    if (isEmptyEditingContext()) {
+      const block = currentBlockEl();
+      return !!(block && block.querySelector(inlineSelector(kind)));
+    }
+    try {
+      if (kind === 'bold' && document.queryCommandState('bold')) return true;
+      if (kind === 'italic' && document.queryCommandState('italic')) return true;
+    } catch (_) {}
+    return false;
+  }
+
   /** 折叠光标退出加粗/斜体（解决换行继承后 execCommand 关不掉） */
   function exitInlineFormat(kind) {
     const wrap = closestInlineFormat(kind);
@@ -283,7 +397,7 @@ function createRichEditor(host, options) {
     const sel = window.getSelection();
     if (!sel || !sel.rangeCount) return false;
     const range = sel.getRangeAt(0);
-    const emptyText = !(wrap.textContent || '').replace(/\u200b/g, '').trim();
+    const emptyText = !visibleText(wrap);
 
     if (emptyText) {
       const marker = unwrapNode(wrap);
@@ -294,14 +408,12 @@ function createRichEditor(host, options) {
     if (!range.collapsed) {
       try { document.execCommand(kind === 'bold' ? 'bold' : 'italic'); } catch (_) {}
       if (isInlineOn(kind) && closestInlineFormat(kind)) {
-        // 选区仍在壳内：对选中部分不再包格式——拆当前壳并保留内容
         const marker = unwrapNode(wrap);
         if (marker) placeCaret(marker, 0);
       }
       return true;
     }
 
-    // 折叠：在光标处拆开格式壳，光标落在未格式化空隙
     const afterRange = document.createRange();
     afterRange.setStart(range.startContainer, range.startOffset);
     afterRange.setEnd(wrap, wrap.childNodes.length);
@@ -314,15 +426,14 @@ function createRichEditor(host, options) {
     if (trailing.childNodes.length) {
       const tail = wrap.cloneNode(false);
       tail.appendChild(trailing);
-      if (!(tail.textContent || '').replace(/\u200b/g, '').trim() && !tail.querySelector('img,video')) {
-        // 仅 br：直接插入 br，不再包格式
+      if (!visibleText(tail) && !tail.querySelector('img,video')) {
         while (tail.firstChild) marker.parentNode.insertBefore(tail.firstChild, marker.nextSibling);
       } else {
         marker.parentNode.insertBefore(tail, marker.nextSibling);
       }
     }
 
-    if (!(wrap.textContent || '').replace(/\u200b/g, '').trim() && !wrap.querySelector('img,video')) {
+    if (!visibleText(wrap) && !wrap.querySelector('img,video')) {
       wrap.remove();
     }
 
@@ -332,20 +443,26 @@ function createRichEditor(host, options) {
 
   function toggleInline(kind) {
     try { document.execCommand('styleWithCSS', false, false); } catch (_) {}
+    // 无文字：完全手写开关，避开 execCommand typing style 关不掉的问题
+    if (isEmptyEditingContext()) {
+      toggleInlineEmpty(kind);
+      return;
+    }
     const on = isInlineOn(kind);
     if (!on) {
       document.execCommand(kind === 'bold' ? 'bold' : 'italic');
       return;
     }
-    // 换行后空段常包在 <b>/<em> 里，原生 toggle 无效，直接拆壳
     const wrap = closestInlineFormat(kind);
-    const empty = wrap && !(wrap.textContent || '').replace(/\u200b/g, '').trim();
+    const empty = wrap && !visibleText(wrap);
     if (empty) {
       exitInlineFormat(kind);
+      if (isInlineOn(kind) && isEmptyEditingContext()) toggleInlineEmpty(kind);
       return;
     }
     document.execCommand(kind === 'bold' ? 'bold' : 'italic');
     if (isInlineOn(kind)) exitInlineFormat(kind);
+    if (isInlineOn(kind) && isEmptyEditingContext()) toggleInlineEmpty(kind);
   }
 
   function saveSelection() {
@@ -867,6 +984,36 @@ function createRichEditor(host, options) {
       return;
     }
     deselectMedia();
+  });
+  function resolveFromFig(fig) {
+    const parsed = typeof parseMediaFig === 'function' ? parseMediaFig(fig) : null;
+    const kind = (parsed && parsed.kind) || 'image';
+    const dataSrc = (parsed && parsed.dataSrc) || String((fig && fig.getAttribute('data-src')) || '');
+    if (!dataSrc) return { kind };
+    if (dataSrc.startsWith('data:')) return { kind, dataUrl: dataSrc };
+    const pIdx = typeof parsePendingIndex === 'function' ? parsePendingIndex(dataSrc) : null;
+    if (pIdx != null && pending[pIdx]) {
+      const val = pending[pIdx].value;
+      if (typeof val === 'string' && val.startsWith('data:')) return { kind, dataUrl: val };
+      if (val && typeof val === 'object' && val.srcPath) return { kind, srcPath: val.srcPath };
+      if (typeof val === 'string' && !val.startsWith('pending:')) return { kind, rel: val };
+      return { kind };
+    }
+    return { kind, rel: dataSrc.replace(/^\/+/, '').replace(/\\/g, '/') };
+  }
+  surface.addEventListener('contextmenu', (e) => {
+    const fig = e.target && e.target.closest && e.target.closest('figure.doc-media');
+    if (!fig || !surface.contains(fig)) return;
+    e.preventDefault();
+    if (typeof openMediaContextMenu !== 'function') return;
+    openMediaContextMenu({
+      fig,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      canDelete: true,
+      resolveLocal: () => resolveFromFig(fig),
+      onDelete: (f) => removeMediaFig(f),
+    });
   });
   surface.addEventListener('keydown', (e) => {
     if (selectedMedia && (e.key === 'Backspace' || e.key === 'Delete')) {

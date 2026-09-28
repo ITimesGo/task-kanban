@@ -1,9 +1,12 @@
-// 图片灯箱：滚轮缩放 + 拖拽移动；离线 OCR 提取文字
+// 图片灯箱：滚轮缩放 + 拖拽移动；右键菜单离线 OCR 提取文字
 let lb = {
   zoom: 1,
   tx: 0, ty: 0,
   dragging: false, startX: 0, startY: 0, moved: false,
   ocrBusy: false,
+  ocrAvailable: false,
+  mediaType: 'image',
+  currentSrc: '',
 };
 
 function applyLightbox() {
@@ -39,8 +42,6 @@ function resetOcrPanel() {
   if (status) status.textContent = '';
   if (copyBtn) copyBtn.disabled = true;
   lb.ocrBusy = false;
-  const btn = $('#lightboxOcrBtn');
-  if (btn) { btn.disabled = false; btn.textContent = '提取文字'; }
 }
 
 function setOcrStatus(msg) {
@@ -144,37 +145,23 @@ async function getOcrPluginState() {
 }
 
 async function refreshLightboxOcrEntry() {
-  const btn = $('#lightboxOcrBtn');
-  if (!btn) return;
   if (lb.mediaType === 'video') {
-    btn.hidden = true;
-    btn.dataset.ocrMode = 'off';
+    lb.ocrAvailable = false;
     return;
   }
   const p = await getOcrPluginState();
-  const ready = !!(p && p.installed && p.enabled);
-  if (!ready) {
-    btn.hidden = true;
-    btn.dataset.ocrMode = 'off';
-    return;
-  }
-  btn.hidden = false;
-  btn.textContent = '提取文字';
-  btn.title = '离线识别图片中的文字';
-  btn.dataset.ocrMode = 'run';
+  lb.ocrAvailable = !!(p && p.installed && p.enabled);
 }
 window.refreshLightboxOcrEntry = refreshLightboxOcrEntry;
 
 async function runLightboxOcr() {
   if (lb.ocrBusy) return;
-  const btn = $('#lightboxOcrBtn');
-  if (btn?.hidden || btn?.dataset.ocrMode !== 'run') return;
+  if (lb.mediaType === 'video' || !lb.ocrAvailable) return;
 
   const img = $('#lightboxImg');
   const textEl = $('#lightboxOcrText');
   const copyBtn = $('#lightboxOcrCopy');
   lb.ocrBusy = true;
-  if (btn) { btn.disabled = true; btn.textContent = '识别中…'; }
   showOcrPanel();
   if (textEl) textEl.value = '';
   if (copyBtn) copyBtn.disabled = true;
@@ -212,7 +199,6 @@ async function runLightboxOcr() {
     if (typeof offProgress === 'function') offProgress();
     lb.ocrBusy = false;
     await refreshLightboxOcrEntry();
-    if (btn) btn.disabled = false;
   }
 }
 
@@ -229,6 +215,87 @@ function relFromImageSrc(src) {
   return '';
 }
 
+function resolveLightboxLocal() {
+  const img = $('#lightboxImg');
+  const src = lb.currentSrc || (img && img.src) || '';
+  const kind = lb.mediaType === 'video' ? 'video' : 'image';
+  const rel = relFromImageSrc(src);
+  if (rel) return { kind, rel };
+  if (src.startsWith('data:')) return { kind, dataUrl: src };
+  if (src) return { kind, srcPath: src };
+  return { kind };
+}
+
+function srcFromMediaLocal(local) {
+  if (!local) return '';
+  if (local.dataUrl) return local.dataUrl;
+  if (local.rel && typeof API !== 'undefined') {
+    if (typeof API.imageUrl === 'function') return API.imageUrl(local.rel);
+    if (typeof API.mediaFileUrl === 'function') return API.mediaFileUrl(local.rel) || '';
+  }
+  if (local.srcPath) {
+    if (typeof API !== 'undefined' && typeof API.localFileUrl === 'function') {
+      try { return API.localFileUrl(local.srcPath); } catch (_) { /* fall through */ }
+    }
+    return local.srcPath;
+  }
+  return '';
+}
+
+function waitLightboxImageReady() {
+  const img = $('#lightboxImg');
+  if (!img) return Promise.resolve();
+  if (img.complete && img.naturalWidth) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      img.removeEventListener('load', done);
+      img.removeEventListener('error', done);
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(done, 8000);
+    img.addEventListener('load', done);
+    img.addEventListener('error', done);
+  });
+}
+
+/** 任意图片来源：打开预览（必要时）并跑 OCR */
+async function runMediaOcr(local) {
+  if (!local || local.kind === 'video') return;
+  if (lb.ocrBusy) return;
+  const src = srcFromMediaLocal(local);
+  if (!src) {
+    alert('无法识别该图片');
+    return;
+  }
+  const overlay = $('#lightboxOverlay');
+  const open = overlay && !overlay.classList.contains('hidden');
+  const same = open && lb.mediaType === 'image' && lb.currentSrc === src;
+  if (!same) {
+    window.showLightbox(src, { type: 'image' });
+    await waitLightboxImageReady();
+  }
+  await refreshLightboxOcrEntry();
+  if (!lb.ocrAvailable) {
+    alert('请先在设置中安装并开启「文字识别」插件');
+    return;
+  }
+  await runLightboxOcr();
+}
+window.runMediaOcr = runMediaOcr;
+
+async function openLightboxContextMenu(e) {
+  if (typeof openMediaContextMenu !== 'function') return;
+  e.preventDefault();
+  e.stopPropagation();
+  openMediaContextMenu({
+    clientX: e.clientX,
+    clientY: e.clientY,
+    canDelete: false,
+    resolveLocal: resolveLightboxLocal,
+  });
+}
+
 window.showLightbox = (src, opts = {}) => {
   const type = opts && opts.type === 'video' ? 'video' : 'image';
   const img = $('#lightboxImg');
@@ -237,6 +304,7 @@ window.showLightbox = (src, opts = {}) => {
   resetOcrPanel();
   lb.currentSrc = src || '';
   lb.mediaType = type;
+  lb.ocrAvailable = false;
   if (type === 'video') {
     if (img) {
       img.classList.add('hidden');
@@ -248,8 +316,6 @@ window.showLightbox = (src, opts = {}) => {
       try { video.currentTime = 0; } catch (_) { /* ignore */ }
       video.play?.().catch(() => {});
     }
-    const ocrBtn = $('#lightboxOcrBtn');
-    if (ocrBtn) ocrBtn.hidden = true;
   } else {
     if (video) {
       try { video.pause(); } catch (_) { /* ignore */ }
@@ -268,6 +334,7 @@ window.showLightbox = (src, opts = {}) => {
 };
 
 function closeLightbox() {
+  if (typeof closeMediaContextMenu === 'function') closeMediaContextMenu();
   $('#lightboxOverlay').classList.add('hidden');
   const video = $('#lightboxVideo');
   if (video) {
@@ -316,16 +383,19 @@ $('#lightboxOverlay').addEventListener('click', (e) => {
   if (lb.moved) return;
   if (e.target.closest('.lightbox-toolbar') || e.target.closest('.lightbox-ocr-panel')) return;
   if (e.target.id === 'lightboxImg' || e.target.id === 'lightboxVideo') return; // 点媒体不关
+  if (e.target.closest('.media-ctx-menu')) return;
   closeLightbox();
+});
+
+$('#lightboxOverlay').addEventListener('contextmenu', (e) => {
+  if (e.target.closest('.lightbox-ocr-panel') || e.target.closest('.lightbox-toolbar')) return;
+  if (e.target.closest('.media-ctx-menu')) return;
+  openLightboxContextMenu(e);
 });
 
 document.getElementById('lightboxCloseBtn')?.addEventListener('click', (e) => {
   e.stopPropagation();
   closeLightbox();
-});
-document.getElementById('lightboxOcrBtn')?.addEventListener('click', (e) => {
-  e.stopPropagation();
-  runLightboxOcr();
 });
 document.getElementById('lightboxOcrHide')?.addEventListener('click', (e) => {
   e.stopPropagation();

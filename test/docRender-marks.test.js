@@ -55,6 +55,34 @@ test('htmlRootToDoc 识别 span style 加粗斜体', () => {
   assert.deepEqual(marks, ['bold', 'italic']);
 });
 
+test('htmlRootToDoc 保留多段换行', () => {
+  const root = el('div', [
+    el('p', [text('第一行')]),
+    el('p', [text('第二行')]),
+    el('p', [el('br', [])]),
+    el('p', [text('第四行')]),
+  ]);
+  const doc = htmlRootToDoc(root);
+  assert.equal(doc.content.length, 4);
+  assert.equal(doc.content[0].type, 'paragraph');
+  assert.deepEqual(doc.content[0].content, [{ type: 'text', text: '第一行' }]);
+  assert.deepEqual(doc.content[1].content, [{ type: 'text', text: '第二行' }]);
+  assert.equal(doc.content[2].type, 'paragraph');
+  assert.ok(!doc.content[2].content || !doc.content[2].content.length);
+  assert.deepEqual(doc.content[3].content, [{ type: 'text', text: '第四行' }]);
+});
+
+test('htmlRootToDoc 保留 div 换行', () => {
+  const root = el('div', [
+    el('div', [text('甲')]),
+    el('div', [text('乙')]),
+  ]);
+  const doc = htmlRootToDoc(root);
+  assert.equal(doc.content.length, 2);
+  assert.deepEqual(doc.content[0].content, [{ type: 'text', text: '甲' }]);
+  assert.deepEqual(doc.content[1].content, [{ type: 'text', text: '乙' }]);
+});
+
 test('htmlRootToDoc 保留嵌套列表与列表内媒体', () => {
   const root = el('div', [
     el('ul', [

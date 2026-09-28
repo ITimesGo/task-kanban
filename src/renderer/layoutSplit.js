@@ -1,35 +1,51 @@
-/** 主布局：创建区可拖宽，宽度记在本机 */
+/** 主布局：创建区可拖宽，宽度记在本机；窄窗时优先保证列表可读宽度 */
 (function initLayoutSplit() {
   const KEY = 'kanban-create-panel-width';
   const DEFAULT_W = 400;
-  const MIN_W = 320;
+  const MIN_W = 320; // 空间充足时的首选最小宽
   const MIN_LIST = 280;
-  const SPLIT_W = 6;
+  const SPLIT_W = 8;
 
   const layout = document.getElementById('layout');
   const panel = document.getElementById('createPanel');
   const split = document.getElementById('layoutSplit');
   if (!layout || !panel || !split) return;
 
+  function layoutWidth() {
+    return layout.clientWidth || window.innerWidth || 1000;
+  }
+
+  /** 创建区上限：优先给列表留出 MIN_LIST，不再用 MIN_W 抬高上限 */
   function maxWidth() {
-    const lw = layout.clientWidth || window.innerWidth || 1000;
-    return Math.max(MIN_W, Math.min(Math.floor(lw * 0.65), lw - MIN_LIST - SPLIT_W));
+    const lw = layoutWidth();
+    const byList = lw - MIN_LIST - SPLIT_W;
+    const byPct = Math.floor(lw * 0.65);
+    return Math.max(0, Math.min(byPct, byList));
   }
 
   function clamp(w) {
+    const max = maxWidth();
     const n = Math.round(Number(w));
-    if (!Number.isFinite(n)) return DEFAULT_W;
-    return Math.min(maxWidth(), Math.max(MIN_W, n));
+    if (!Number.isFinite(n)) return Math.min(DEFAULT_W, max) || max;
+    if (max <= 0) return 0;
+    // 窄窗时 max < MIN_W：允许创建区低于 320，避免挤扁列表
+    const min = Math.min(MIN_W, max);
+    return Math.min(max, Math.max(min, n));
   }
 
-  function load() {
+  function readSaved() {
     try {
       const raw = localStorage.getItem(KEY);
       if (raw == null || raw === '') return DEFAULT_W;
-      return clamp(raw);
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : DEFAULT_W;
     } catch (_) {
       return DEFAULT_W;
     }
+  }
+
+  function load() {
+    return clamp(readSaved());
   }
 
   function save(w) {
@@ -42,11 +58,21 @@
     panel.style.width = next + 'px';
     panel.style.flex = '0 0 auto';
     split.setAttribute('aria-valuenow', String(next));
+    split.setAttribute('aria-valuemax', String(maxWidth()));
     if (persist) save(next);
     return next;
   }
 
-  apply(load());
+  /** 按本地偏好钳制目标宽（收起时也更新，避免展开先冲到旧宽度再闪回） */
+  function applyPreferred() {
+    return apply(readSaved());
+  }
+
+  function isCollapsed() {
+    return !!(layout.classList.contains('is-create-collapsed') || panel.hidden);
+  }
+
+  applyPreferred();
 
   let dragging = false;
   let startX = 0;
@@ -68,8 +94,7 @@
   }
 
   function isInteractive() {
-    const layoutEl = document.getElementById('layout');
-    if (layoutEl && layoutEl.classList.contains('is-create-collapsed')) return false;
+    if (isCollapsed()) return false;
     return !split.classList.contains('is-inactive');
   }
 
@@ -104,21 +129,30 @@
       apply(maxWidth(), { persist: true });
     } else if (e.key === 'End') {
       e.preventDefault();
-      apply(MIN_W, { persist: true });
+      apply(Math.min(MIN_W, maxWidth()), { persist: true });
     }
   });
 
   window.addEventListener('resize', () => {
-    if (!isInteractive() || panel.hidden) return;
-    apply(panel.getBoundingClientRect().width || load());
+    // 收起时也要钳目标宽；展开动画才能直接落到正确宽度
+    if (isCollapsed() || !isInteractive()) {
+      applyPreferred();
+      return;
+    }
+    apply(panel.getBoundingClientRect().width || readSaved());
   });
 
   window.__layoutSplit = {
     reapplyWidth() {
-      const layoutEl = document.getElementById('layout');
-      if (layoutEl && layoutEl.classList.contains('is-create-collapsed')) return;
-      if (panel.hidden) return;
-      apply(panel.getBoundingClientRect().width || load());
+      if (isCollapsed()) {
+        applyPreferred();
+        return;
+      }
+      apply(panel.getBoundingClientRect().width || readSaved());
+    },
+    /** 展开动画开始前调用：写入当前窗口下的目标宽 */
+    prepareExpandWidth() {
+      return applyPreferred();
     },
     setInteractive(on) {
       const enabled = !!on;

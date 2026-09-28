@@ -21,6 +21,7 @@
   <header id="toolbar">
     <div id="toolbarPrimary" class="toolbar-row">
       <div id="statusWrap" class="status-seg" role="tablist" aria-label="任务状态">
+        <span class="status-seg-thumb" aria-hidden="true"></span>
         <button type="button" class="status-seg-btn" data-filter="all" role="tab">全部</button>
         <button type="button" class="status-seg-btn active" data-filter="pending" role="tab" aria-selected="true">待执行</button>
         <button type="button" class="status-seg-btn" data-filter="done" role="tab">已执行</button>
@@ -64,6 +65,13 @@
           <span class="ms-arrow">▾</span>
         </div>
         <div id="rangeDropdown" class="range-dropdown hidden"></div>
+      </div>
+      <div id="mediaFilterWrap">
+        <div id="mediaFilterSelect" class="range-select">
+          <span id="mediaFilterSelected" class="range-value">媒体类型</span>
+          <span class="ms-arrow">▾</span>
+        </div>
+        <div id="mediaFilterDropdown" class="range-dropdown hidden" role="listbox" aria-label="媒体类型"></div>
       </div>
       <div id="searchWrap" class="search-wrap-inline">
         <svg class="search-inline-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
@@ -261,8 +269,9 @@
               <div class="setting-actions" style="margin-top:12px;gap:8px;flex-wrap:wrap">
                 <button id="checkUpdateBtn" class="primary" type="button" style="background:var(--primary);color:var(--on-primary);border-color:var(--primary);">检查更新</button>
                 <button id="downloadUpdateBtn" type="button" class="hidden" hidden>立即更新</button>
+                <button id="cancelUpdateBtn" type="button" class="hidden" hidden>取消更新</button>
               </div>
-              <p class="setting-hint" id="aboutUpdateHint" style="margin-top:12px">点击检查是否有新版本。安装版支持一键更新：下载完成后会自动退出、安装并重新打开。</p>
+              <p class="setting-hint" id="aboutUpdateHint" style="margin-top:12px">点击检查是否有新版本。安装版支持一键更新：下载完成后会自动退出、安装并重新打开。下载过程中可随时取消。</p>
               <div id="aboutUpdateNotes" class="update-notes hidden" hidden>
                 <div class="update-notes-title">更新内容</div>
                 <ul id="aboutUpdateNotesList" class="update-notes-list"></ul>
@@ -312,25 +321,28 @@
     <div id="layoutSplit" class="layout-split" role="separator" aria-orientation="vertical" aria-label="拖动调整创建区宽度，双击恢复默认" aria-valuemin="320" aria-valuemax="65" tabindex="0" title="拖动调整宽度 · 双击恢复默认"></div>
 
     <section id="createPanel">
-      <div class="create-chrome" role="toolbar" aria-label="新建区布局">
-        <button type="button" id="createPinBtn" class="create-chrome-btn is-pinned" aria-pressed="true" title="取消固定" aria-label="取消固定">
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1z"/></svg>
-        </button>
-        <button type="button" id="createCollapseBtn" class="create-chrome-btn" title="收起新建区" aria-label="收起新建区">
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4v16"/></svg>
-        </button>
-      </div>
       <div id="createEditor" class="rich-editor-host"></div>
       <div class="create-side" id="createSide">
-        <div id="createTags" class="tag-select"></div>
+        <div id="createTagWrap" class="task-tag-wrap">
+          <div id="createTagControl" class="multi-select">
+            <div id="createTagSelected" class="ms-selected"><span class="ms-placeholder">选择标签</span></div>
+            <span class="ms-arrow">▾</span>
+          </div>
+          <div id="createTagDropdown" class="ms-dropdown hidden">
+            <input id="createTagSearch" class="ms-search" type="text" placeholder="搜索标签…" />
+            <div id="createTagOptions"></div>
+          </div>
+        </div>
         <div id="newAttachments" class="attachments"></div>
       </div>
       <footer class="create-foot">
         <div class="create-tools">
           <button id="addFileBtn" class="icon-btn" title="添加附件" aria-label="添加附件"><svg class="att-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-          <button id="manTagBtn" class="icon-btn" title="管理标签" aria-label="管理标签"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></button>
         </div>
-        <button id="createBtn" class="primary">创建任务</button>
+        <div class="create-foot-actions">
+          <button type="button" id="createCollapseBtn" class="create-collapse-btn" title="收起新建区">收起</button>
+          <button id="createBtn" class="primary">创建任务</button>
+        </div>
       </footer>
       <div id="createProgress" class="upload-progress hidden">
         <div class="up-bar"><div class="up-fill" id="createProgressFill"></div></div>
@@ -365,7 +377,6 @@
 
   <div id="lightboxOverlay" class="overlay hidden">
     <div class="lightbox-toolbar" id="lightboxToolbar">
-      <button type="button" id="lightboxOcrBtn" class="lightbox-tool-btn" title="离线识别图片中的文字" hidden>提取文字</button>
       <button type="button" id="lightboxCloseBtn" class="lightbox-tool-btn" title="关闭">关闭</button>
     </div>
     <img id="lightboxImg" alt="" />
@@ -393,7 +404,7 @@
       </div>
       <div class="modal-body">
         <div id="tagAdd">
-          <input id="tagInput" placeholder="新标签名称" maxlength="12" />
+          <input id="tagInput" placeholder="新标签名称" maxlength="15" />
           <button id="tagAddBtn" class="primary">新增</button>
         </div>
         <div id="tagList"></div>
@@ -430,6 +441,8 @@
 
   <script src="taskMedia.js"></script>
   <script src="taskDoc.js"></script>
+  <script src="mediaFig.js"></script>
+  <script src="mediaContextMenu.js"></script>
   <script src="docRender.js"></script>
   <script src="richEditor.js"></script>
   <script src="api.js"></script>

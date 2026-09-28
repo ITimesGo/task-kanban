@@ -1,0 +1,75 @@
+<h2>标签选择器布局，你更喜欢哪种？</h2>
+<p class="subtitle">都以「可搜索已有标签」为主；新建仍走标签管理。推荐 B（和列表筛选里的标签下拉一致，学起来快）。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="margin:0;box-shadow:none;border:0">
+        <div class="mockup-body" style="padding:12px;background:#f4f6f8">
+          <div style="font-size:11px;color:#888;margin-bottom:6px">A · 搜索 + 胶囊墙</div>
+          <input class="mock-input" placeholder="搜索标签…" style="width:100%;margin-bottom:8px;box-sizing:border-box">
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <span style="padding:4px 10px;border-radius:999px;background:#3b82f6;color:#fff;font-size:12px">通用版</span>
+            <span style="padding:4px 10px;border-radius:999px;border:1px solid #ccc;font-size:12px">乳源</span>
+            <span style="padding:4px 10px;border-radius:999px;border:1px solid #ccc;font-size:12px">泰康研修院</span>
+            <span style="padding:4px 10px;border-radius:999px;background:#3b82f6;color:#fff;font-size:12px">714所</span>
+            <span style="padding:4px 10px;border-radius:999px;border:1px solid #ccc;font-size:12px">…</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 搜索 + 胶囊墙</h3>
+      <p>保留现在的胶囊，上面加搜索过滤。改动小，但已选仍混在墙里。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="margin:0;box-shadow:none;border:0">
+        <div class="mockup-body" style="padding:12px;background:#f4f6f8">
+          <div style="font-size:11px;color:#888;margin-bottom:6px">B · 下拉多选（推荐）</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:6px 8px;border:1px solid #c5d0dc;border-radius:8px;background:#fff;margin-bottom:6px">
+            <span style="padding:2px 8px;border-radius:6px;background:#e8f1ff;color:#2563eb;font-size:12px">通用版 ×</span>
+            <span style="padding:2px 8px;border-radius:6px;background:#e8f1ff;color:#2563eb;font-size:12px">714所 ×</span>
+            <span style="color:#aaa;font-size:12px">搜索标签…</span>
+          </div>
+          <div style="border:1px solid #ddd;border-radius:8px;background:#fff;padding:4px;font-size:12px">
+            <div style="padding:6px 8px;background:#f0f7ff">☑ 通用版</div>
+            <div style="padding:6px 8px">☐ 乳源</div>
+            <div style="padding:6px 8px">☐ 泰康研修院</div>
+            <div style="padding:6px 8px;background:#f0f7ff">☑ 中国船舶714所</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 下拉多选</h3>
+      <p>已选芯片在框内，下拉里勾选 + 搜索。和首页「选择标签」同一套交互。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="margin:0;box-shadow:none;border:0">
+        <div class="mockup-body" style="padding:12px;background:#f4f6f8">
+          <div style="font-size:11px;color:#888;margin-bottom:6px">C · 已选 / 全部 两段</div>
+          <div style="font-size:11px;color:#666;margin-bottom:4px">已选</div>
+          <div style="display:flex;gap:6px;margin-bottom:10px">
+            <span style="padding:4px 10px;border-radius:999px;background:#3b82f6;color:#fff;font-size:12px">通用版 ×</span>
+            <span style="padding:4px 10px;border-radius:999px;background:#3b82f6;color:#fff;font-size:12px">714所 ×</span>
+          </div>
+          <input class="mock-input" placeholder="搜索全部标签…" style="width:100%;margin-bottom:6px;box-sizing:border-box">
+          <div style="display:flex;flex-wrap:wrap;gap:6px;opacity:.85">
+            <span style="padding:4px 10px;border-radius:999px;border:1px solid #ccc;font-size:12px">乳源</span>
+            <span style="padding:4px 10px;border-radius:999px;border:1px solid #ccc;font-size:12px">泰康研修院</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 已选 / 全部 分段</h3>
+      <p>上面固定已选，下面搜索全部。已选更醒目，但占两块高度。</p>
+    </div>
+  </div>
+</div>

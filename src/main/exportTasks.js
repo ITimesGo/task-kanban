@@ -54,16 +54,13 @@ function imageRels(task) {
   }).filter(Boolean);
 }
 
-/** 导出用图片：优先 doc 文档序，仅 image，跳过 video / pending */
+/** 导出用图片：按 resolve 后的 doc 文档序，仅 image，跳过 video / pending */
 function exportImageRels(task) {
   const doc = taskDoc.resolveTaskDoc(task);
-  if (taskDoc.isValidDoc(task && task.doc)) {
-    return taskDoc.extractMedia(doc)
-      .filter((m) => m && m.kind === 'image')
-      .map((m) => m.rel)
-      .filter((rel) => rel && !String(rel).startsWith(taskDoc.PENDING_PREFIX));
-  }
-  return imageRels(task);
+  return taskDoc.extractMedia(doc)
+    .filter((m) => m && m.kind === 'image')
+    .map((m) => m.rel)
+    .filter((rel) => rel && !String(rel).startsWith(taskDoc.PENDING_PREFIX));
 }
 
 function exportPlainText(task) {
@@ -111,6 +108,8 @@ function docNodeExportHtml(node, imgMap) {
     const rel = node.attrs && node.attrs.src;
     const dataUrl = rel && imgMap ? imgMap[rel] : null;
     if (dataUrl) return `<img src="${dataUrl}" alt="">`;
+    // 无图文件时仍保留占位，维持文档序，便于核对穿插结构
+    if (rel) return `<img data-src="${esc(rel)}" alt="">`;
     return '';
   }
   if (node.type === 'video') return ''; // 导出不含视频
@@ -144,24 +143,45 @@ function docToExportMarkdown(doc, assetNamesByRel) {
   function walk(node, listPrefix) {
     if (!node) return;
     if (node.type === 'paragraph') {
-      lines.push(inlineExportMd(node.content));
-      lines.push('');
+      const text = inlineExportMd(node.content);
+      if (listPrefix != null) lines.push(listPrefix + text);
+      else {
+        lines.push(text);
+        lines.push('');
+      }
       return;
     }
     if (node.type === 'bulletList' || node.type === 'orderedList') {
       const ordered = node.type === 'orderedList';
       (node.content || []).forEach((li, i) => {
         const prefix = ordered ? `${i + 1}. ` : '- ';
-        const bits = [];
-        for (const c of li.content || []) {
-          if (c.type === 'paragraph') bits.push(inlineExportMd(c.content));
-          else if (c.type === 'image') {
+        const kids = (li && li.content) || [];
+        let first = true;
+        for (const c of kids) {
+          if (c.type === 'paragraph') {
+            const bit = inlineExportMd(c.content);
+            if (first) {
+              lines.push(prefix + bit);
+              first = false;
+            } else {
+              lines.push('  ' + bit);
+            }
+          } else if (c.type === 'image') {
             const rel = c.attrs && c.attrs.src;
             const name = rel && assetNamesByRel ? assetNamesByRel[rel] : null;
-            if (name) bits.push(`![](${name})`);
+            if (name) {
+              if (first) {
+                lines.push(prefix + `![](${name})`);
+                first = false;
+              } else {
+                lines.push(`  ![](${name})`);
+              }
+            }
+          } else if (c.type === 'bulletList' || c.type === 'orderedList') {
+            walk(c);
           }
         }
-        lines.push(prefix + (bits.join(' ') || ''));
+        if (first) lines.push(prefix.trimEnd());
       });
       lines.push('');
       return;
@@ -182,8 +202,12 @@ function docToExportMarkdown(doc, assetNamesByRel) {
 }
 
 /** 筛选 + 按时间倒序 */
-function filterAndSortTasks(tasks, { tagIds = [], status = 'all', sortKey = 'createdAt' } = {}) {
+function filterAndSortTasks(tasks, { tagIds = [], status = 'all', sortKey = 'createdAt', taskIds } = {}) {
   let list = Array.isArray(tasks) ? [...tasks] : [];
+  if (Array.isArray(taskIds) && taskIds.length) {
+    const want = new Set(taskIds.map(String));
+    list = list.filter((t) => t && want.has(String(t.id)));
+  }
   if (status && status !== 'all') list = list.filter((t) => t.status === status);
   if (tagIds && tagIds.length) {
     list = list.filter((t) => tagIds.some((id) => (t.tags || []).includes(id)));
@@ -193,20 +217,12 @@ function filterAndSortTasks(tasks, { tagIds = [], status = 'all', sortKey = 'cre
   return list;
 }
 
-function defaultExportName(format) {
+function defaultExportName(format, { single } = {}) {
   const d = new Date();
   const p = (n) => String(n).padStart(2, '0');
   const stamp = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   const ext = format === 'markdown' ? 'md' : format === 'html' ? 'html' : 'pdf';
-  return `任务导出_${stamp}.${ext}`;
-}
-
-function filtersSummary({ tagIds, status, sortKey }, tagMap) {
-  const tags = (tagIds || []).map((id) => tagMap[id]).filter(Boolean);
-  const tagText = tags.length ? tags.join('、') : '全部标签';
-  const statusText = status === 'pending' ? '待执行' : status === 'done' ? '已执行' : '全部状态';
-  const sortText = SORT_LABEL[sortKey] || SORT_LABEL.createdAt;
-  return { tagText, statusText, sortText };
+  return `${single ? '任务' : '任务导出'}_${stamp}.${ext}`;
 }
 
 function readImageDataUrl(appDataDir, rel) {
@@ -241,9 +257,10 @@ function buildDocumentModel(tasks, tags, options, appDataDir) {
   const tagMap = tagMapOf(tags);
   const sortKey = options.sortKey || 'createdAt';
   const includeImages = !!options.includeImages;
-  const summary = filtersSummary(options, tagMap);
   const items = tasks.map((t, idx) => {
     const names = taskTagNames(t, tagMap);
+    // 始终用 resolve 后的 doc（原生 doc 或旧数据合成），保证导出与详情一致的图文穿插
+    const doc = taskDoc.resolveTaskDoc(t);
     const rels = exportImageRels(t);
     const imgMap = Object.create(null);
     const imgs = [];
@@ -256,9 +273,7 @@ function buildDocumentModel(tasks, tags, options, appDataDir) {
     } else if (includeImages) {
       for (const rel of rels) imgs.push({ rel, dataUrl: null });
     }
-    const hasDoc = taskDoc.isValidDoc(t && t.doc);
-    const doc = taskDoc.resolveTaskDoc(t);
-    const bodyHtml = hasDoc ? docToExportHtml(doc, includeImages ? imgMap : null) : '';
+    const bodyHtml = docToExportHtml(doc, includeImages ? imgMap : null);
     return {
       index: idx + 1,
       text: exportPlainText(t),
@@ -271,22 +286,25 @@ function buildDocumentModel(tasks, tags, options, appDataDir) {
       updatedAt: formatTime(t.updatedAt),
       sortTime: formatTime(t[sortKey]),
       images: imgs,
-      doc: hasDoc ? doc : null,
+      doc,
+      single: !!(options.taskIds && options.taskIds.length === 1),
     };
   });
-  return { summary, sortKey, includeImages, items, exportedAt: formatTime(new Date().toISOString()) };
+  return { sortKey, includeImages, items, exportedAt: formatTime(new Date().toISOString()) };
 }
 
 function renderHtmlDocument(model, { forPrint = false } = {}) {
-  const { summary, items, exportedAt, includeImages } = model;
+  const { items, exportedAt, includeImages } = model;
+  const single = items.length === 1 && items[0] && items[0].single;
   const blocks = items.map((it) => {
     const tagHtml = it.tags.length
-      ? it.tags.map((n) => `<span class="tag">${esc(n)}</span>`).join('')
-      : '<span class="muted">无标签</span>';
+      ? `<div class="tags">${it.tags.map((n) => `<span class="tag">${esc(n)}</span>`).join('')}</div>`
+      : '';
     let body;
     if (it.bodyHtml) {
       body = `<div class="body rich">${it.bodyHtml}</div>`;
     } else {
+      // 兜底：无 doc 结构时才退回「全文 + 图列表」
       const imgHtml = includeImages && it.images.length
         ? `<div class="imgs">${it.images.map((img) => (
             img.dataUrl ? `<img src="${img.dataUrl}" alt="">` : ''
@@ -294,28 +312,30 @@ function renderHtmlDocument(model, { forPrint = false } = {}) {
         : '';
       body = `<pre class="body">${esc(it.text)}</pre>${imgHtml}`;
     }
+    const head = single ? '' : `<header><span class="idx">#${it.index}</span></header>`;
     return `<article class="task">
-  <header>
-    <span class="idx">#${it.index}</span>
-    <span class="status">${esc(it.status)}</span>
-  </header>
+  ${head}
   ${body}
   <div class="meta">
-    <div class="tags">${tagHtml}</div>
+    ${tagHtml}
     <div class="times">
       <span>创建 ${esc(it.createdAt)}</span>
-      <span>状态 ${esc(it.statusAt)}</span>
       <span>更新 ${esc(it.updatedAt)}</span>
     </div>
   </div>
 </article>`;
   }).join('\n');
 
+  const title = single ? '任务详情' : '任务导出';
+  const sub = single
+    ? `导出时间 ${esc(exportedAt)}`
+    : `导出时间 ${esc(exportedAt)} · 共 ${items.length} 条`;
+
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>任务导出</title>
+<title>${esc(title)}</title>
 <style>
   :root { color-scheme: light; }
   body {
@@ -347,16 +367,20 @@ function renderHtmlDocument(model, { forPrint = false } = {}) {
     font-size: 14px;
   }
   .body.rich { white-space: normal; }
-  .body.rich p { margin: 0 0 0.6em; }
-  .body.rich ul, .body.rich ol { margin: 0 0 0.6em; padding-left: 1.3em; }
+  .body.rich p { margin: 0 0 0.65em; }
+  .body.rich ul, .body.rich ol { margin: 0 0 0.65em; padding-left: 1.3em; }
+  .body.rich li { margin: 0.15em 0; }
   .body.rich img {
     display: block;
-    max-width: 220px;
-    max-height: 160px;
+    max-width: min(100%, 560px);
+    max-height: 420px;
+    width: auto;
+    height: auto;
     object-fit: contain;
     border: 1px solid #e4e7ed;
-    border-radius: 6px;
-    margin: 8px 0;
+    border-radius: 8px;
+    margin: 10px 0 14px;
+    background: #f5f7fa;
   }
   .meta { margin-top: 10px; font-size: 12px; color: #606266; }
   .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
@@ -381,19 +405,22 @@ function renderHtmlDocument(model, { forPrint = false } = {}) {
 </style>
 </head>
 <body>
-  <h1>任务导出</h1>
-  <p class="sub">导出时间 ${esc(exportedAt)} · ${esc(summary.tagText)} · ${esc(summary.statusText)} · 按${esc(summary.sortText)} · 共 ${items.length} 条</p>
+  <h1>${esc(title)}</h1>
+  <p class="sub">${sub}</p>
   ${items.length ? blocks : '<p class="empty">没有符合条件的任务</p>'}
 </body>
 </html>`;
 }
 
 function renderMarkdown(model, assetNamesByTask) {
-  const { summary, items, exportedAt, includeImages } = model;
+  const { items, exportedAt, includeImages } = model;
+  const single = items.length === 1 && items[0] && items[0].single;
   const lines = [
-    '# 任务导出',
+    single ? '# 任务详情' : '# 任务导出',
     '',
-    `> 导出时间 ${exportedAt} · ${summary.tagText} · ${summary.statusText} · 按${summary.sortText} · 共 ${items.length} 条`,
+    single
+      ? `> 导出时间 ${exportedAt}`
+      : `> 导出时间 ${exportedAt} · 共 ${items.length} 条`,
     '',
   ];
   if (!items.length) {
@@ -401,8 +428,10 @@ function renderMarkdown(model, assetNamesByTask) {
     return lines.join('\n');
   }
   for (const it of items) {
-    lines.push(`## #${it.index} ${it.status}`);
-    lines.push('');
+    if (!single) {
+      lines.push(`## #${it.index}`);
+      lines.push('');
+    }
     const assetMap = (assetNamesByTask && assetNamesByTask[it.index]) || null;
     if (it.doc) {
       const mdBody = docToExportMarkdown(it.doc, includeImages ? assetMap : null);
@@ -414,14 +443,13 @@ function renderMarkdown(model, assetNamesByTask) {
       if (includeImages && assetMap) {
         for (const rel of (it.imageRels || [])) {
           const name = assetMap[rel];
-          if (name) lines.push(`- ![](${name})`);
+          if (name) lines.push(`![](${name})`);
         }
         if (it.imageRels && it.imageRels.length) lines.push('');
       }
     }
-    lines.push(`- 标签：${it.tags.length ? it.tags.join('、') : '无'}`);
+    if (it.tags.length) lines.push(`- 标签：${it.tags.join('、')}`);
     lines.push(`- 创建：${it.createdAt}`);
-    lines.push(`- 状态：${it.statusAt}`);
     lines.push(`- 更新：${it.updatedAt}`);
     lines.push('');
   }

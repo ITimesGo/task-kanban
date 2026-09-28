@@ -1,4 +1,229 @@
 let createEditor = null;
+let createTagMenuBound = false;
+/** @type {{ id: string, input: HTMLInputElement, orig: string } | null} */
+let createTagRename = null;
+/** @type {Promise<boolean> | null} */
+let createTagRenameCommitPromise = null;
+
+function createTagEls() {
+  return {
+    selected: document.getElementById('createTagSelected'),
+    control: document.getElementById('createTagControl'),
+    options: document.getElementById('createTagOptions'),
+    search: document.getElementById('createTagSearch'),
+    emptyPlaceholder: tagList.length ? '选择标签' : '尚无标签，输入名称后可创建',
+  };
+}
+
+function commitCreateTagRename() {
+  if (createTagRenameCommitPromise) return createTagRenameCommitPromise;
+  if (!createTagRename) return Promise.resolve(true);
+  const state = createTagRename;
+  if (!state.input) {
+    createTagRename = null;
+    syncCreateTagFilterOptions();
+    return Promise.resolve(true);
+  }
+  const next = String(state.input.value || '').trim();
+  const p = (async () => {
+    if (next === state.orig) {
+      createTagRename = null;
+      syncCreateTagFilterOptions();
+      return true;
+    }
+    const res = await API.renameTag(state.id, next);
+    if (!res.ok) {
+      alert(res.error || '保存失败');
+      if (createTagRename && createTagRename.input === state.input) {
+        try { state.input.focus(); } catch (_) { /* ignore */ }
+      }
+      return false;
+    }
+    createTagRename = null;
+    tagList = res.tags;
+    afterTagMutation();
+    return true;
+  })();
+  createTagRenameCommitPromise = p;
+  p.finally(() => {
+    if (createTagRenameCommitPromise === p) createTagRenameCommitPromise = null;
+  });
+  return p;
+}
+
+function cancelCreateTagRename() {
+  if (!createTagRename) return;
+  createTagRename = null;
+  createTagRenameCommitPromise = null;
+  syncCreateTagFilterOptions();
+}
+
+function startCreateTagRename(id, optEl) {
+  if (!optEl || createTagRename) return;
+  const t = tagList.find((x) => x.id === id);
+  if (!t) return;
+  // 先占位改名态并重绘，隐藏全部拖动手柄
+  createTagRename = { id, input: null, orig: t.name };
+  syncCreateTagFilterOptions();
+  const box = document.getElementById('createTagOptions');
+  const row = box && box.querySelector(`.ms-option-manage[data-id="${CSS.escape(id)}"]`);
+  if (!row) {
+    createTagRename = null;
+    syncCreateTagFilterOptions();
+    return;
+  }
+  const nameEl = row.querySelector('.ms-option-name');
+  if (!nameEl) {
+    createTagRename = null;
+    syncCreateTagFilterOptions();
+    return;
+  }
+  row.classList.add('is-renaming');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'ms-rename-input';
+  input.maxLength = 15;
+  input.value = t.name;
+  nameEl.replaceWith(input);
+  createTagRename = { id, input, orig: t.name };
+  input.addEventListener('click', (e) => e.stopPropagation());
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      input.blur();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      cancelCreateTagRename();
+    }
+  });
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (!createTagRename || createTagRename.input !== input) return;
+      commitCreateTagRename();
+    }, 0);
+  });
+  try { input.focus(); input.select(); } catch (_) { /* ignore */ }
+}
+
+async function createTagFromCreatePicker(name) {
+  try {
+    const res = await API.createTag(name);
+    if (!res || !res.ok) {
+      alert((res && res.error) || '新增失败');
+      return;
+    }
+    const beforeIds = new Set(tagList.map((t) => t.id));
+    tagList = res.tags;
+    const created = tagList.find((t) => !beforeIds.has(t.id));
+    const search = document.getElementById('createTagSearch');
+    if (search) search.value = '';
+    afterTagMutation(created ? { selectedId: created.id, selectCreate: true } : {});
+  } catch (err) {
+    alert('新增失败：' + (err && err.message ? err.message : err));
+  }
+}
+
+async function deleteTagFromCreatePicker(id) {
+  const res = await confirmDeleteTag(id);
+  if (!res) return;
+  tagList = res.tags;
+  afterTagMutation({ deletedId: id });
+}
+
+async function reorderTagFromCreatePicker(fromId, toId) {
+  if (createTagRename || createTagRenameCommitPromise) return;
+  if (typeof isConfirmOpen === 'function' && isConfirmOpen()) return;
+  try {
+    const res = await API.reorderTag(fromId, toId);
+    if (!res || !res.ok) {
+      alert((res && res.error) || '调整顺序失败');
+      syncCreateTagFilterOptions();
+      return;
+    }
+    tagList = res.tags;
+    afterTagMutation();
+  } catch (err) {
+    alert('调整顺序失败：' + (err && err.message ? err.message : err));
+    syncCreateTagFilterOptions();
+  }
+}
+
+function closeCreateTagDropdown() {
+  const dd = document.getElementById('createTagDropdown');
+  const ctrl = document.getElementById('createTagControl');
+  if (dd) dd.classList.add('hidden');
+  if (ctrl) ctrl.classList.remove('open');
+  createTagRename = null;
+  createTagRenameCommitPromise = null;
+}
+
+async function requestCloseCreateTagDropdown() {
+  if (typeof isConfirmOpen === 'function' && isConfirmOpen()) return;
+  if (createTagRename) {
+    const ok = await commitCreateTagRename();
+    if (!ok) return;
+  }
+  closeCreateTagDropdown();
+}
+
+function openCreateTagDropdown() {
+  const dd = document.getElementById('createTagDropdown');
+  const ctrl = document.getElementById('createTagControl');
+  if (dd) dd.classList.remove('hidden');
+  if (ctrl) ctrl.classList.add('open');
+  const search = document.getElementById('createTagSearch');
+  if (search) {
+    search.value = '';
+    try { search.focus(); } catch (_) { /* ignore */ }
+  }
+  syncCreateTagFilterOptions();
+}
+
+function toggleCreateTagDropdown() {
+  const dd = document.getElementById('createTagDropdown');
+  if (!dd) return;
+  if (dd.classList.contains('hidden')) openCreateTagDropdown();
+  else requestCloseCreateTagDropdown();
+}
+
+function ensureCreateTagMenuBound() {
+  if (createTagMenuBound) return;
+  const ctrl = document.getElementById('createTagControl');
+  if (!ctrl) return;
+  createTagMenuBound = true;
+  ctrl.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleCreateTagDropdown();
+  });
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#createTagWrap')) return;
+    // 确认框点确定/取消时 overlay 可能已 hidden，但仍应用点击目标判断，避免误关标签下拉
+    if (e.target.closest('#confirmOverlay')) return;
+    if (typeof isConfirmOpen === 'function' && isConfirmOpen()) return;
+    requestCloseCreateTagDropdown();
+  });
+}
+
+function syncCreateTagFilterOptions() {
+  const els = createTagEls();
+  const cbs = {
+    onChange: (id, checked) => {
+      const i = newTags.indexOf(id);
+      if (checked && i < 0) newTags.push(id);
+      if (!checked && i >= 0) newTags.splice(i, 1);
+      renderNewTagSelect();
+    },
+    onRename: (id, optEl) => startCreateTagRename(id, optEl),
+    onDelete: (id) => { deleteTagFromCreatePicker(id); },
+    onCreate: (name) => { createTagFromCreatePicker(name); },
+    onReorder: (fromId, toId) => { reorderTagFromCreatePicker(fromId, toId); },
+    canReorder: () => !createTagRename && !createTagRenameCommitPromise
+      && !(typeof isConfirmOpen === 'function' && isConfirmOpen()),
+  };
+  ui.renderManageableTagFilter(tagList, newTags, cbs, els);
+}
 
 function updateCreateBtnState() {
   const empty = createEditor
@@ -8,48 +233,18 @@ function updateCreateBtnState() {
 }
 
 function renderNewTagSelect() {
-  const box = $('#createTags');
-  const side = document.getElementById('createSide');
-  if (!box) return;
-  if (!tagList.length) {
-    box.innerHTML = '<span class="hint">尚无标签，点击下方标签图标管理</span>';
-    if (side) side.classList.toggle('is-expanded', false);
-    return;
-  }
-  const LIMIT = 6;
-  const ordered = tagList.slice().sort((a, b) => {
-    const ao = newTags.includes(a.id) ? 0 : 1;
-    const bo = newTags.includes(b.id) ? 0 : 1;
-    return ao - bo;
-  });
-  const showExpand = ordered.length > LIMIT;
-  let shown = ordered;
-  if (showExpand && !newTagExpanded) shown = ordered.slice(0, LIMIT);
-  box.innerHTML = shown.map((t) =>
-    `<button type="button" class="tag-pick ${newTags.includes(t.id) ? 'on' : ''}" data-id="${t.id}">${ui.esc(t.name)}</button>`
-  ).join('');
-  if (showExpand) {
-    const more = document.createElement('button');
-    more.type = 'button';
-    more.className = 'tag-expand';
-    more.textContent = newTagExpanded ? '收起' : `更多 (${ordered.length - LIMIT})`;
-    box.appendChild(more);
-  }
-  if (side) side.classList.toggle('is-expanded', !!newTagExpanded);
-  box.querySelectorAll('.tag-pick').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.id;
-      const i = newTags.indexOf(id);
-      if (i >= 0) newTags.splice(i, 1); else newTags.push(id);
-      renderNewTagSelect();
-    });
-  });
-  const expandBtn = box.querySelector('.tag-expand');
-  if (expandBtn) expandBtn.addEventListener('click', () => {
-    newTagExpanded = !newTagExpanded;
+  ensureCreateTagMenuBound();
+  const els = createTagEls();
+  if (!els.control) return;
+  const onRemove = (id) => {
+    const i = newTags.indexOf(id);
+    if (i >= 0) newTags.splice(i, 1);
     renderNewTagSelect();
-  });
+  };
+  ui.renderTagSelectedRemovable(newTags, onRemove, els);
+  syncCreateTagFilterOptions();
 }
+
 
 function addImageToCreate(value) {
   if (!createEditor) return false;
@@ -156,6 +351,7 @@ updateCreateBtnState();
 const createPanel = document.getElementById('createPanel');
 const MAX_IMG_MB = 10;
 createPanel.addEventListener('dragover', (e) => {
+  if (e.dataTransfer && [...(e.dataTransfer.types || [])].includes('application/x-kanban-tag')) return;
   e.preventDefault();
   e.stopPropagation();
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
@@ -166,6 +362,10 @@ createPanel.addEventListener('dragleave', (e) => {
   createPanel.classList.remove('drag-over');
 });
 createPanel.addEventListener('drop', (e) => {
+  if (e.dataTransfer && [...(e.dataTransfer.types || [])].includes('application/x-kanban-tag')) {
+    createPanel.classList.remove('drag-over');
+    return;
+  }
   e.preventDefault();
   e.stopPropagation();
   createPanel.classList.remove('drag-over');

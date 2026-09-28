@@ -9,13 +9,14 @@ let newMedia = [];
 let newTags = [];
 let newAttachments = []; // {path,name}
 let tagFilter = [];
+/** 二级筛选：媒体类型多选（OR）—'image' | 'video' | 'attachment'；空=不限 */
+let mediaFilter = [];
 let tagList = [];
 let editing = null;
-let newTagExpanded = false;
 let detailState = { mode: 'view', dataUrl: [] };
 let searchQuery = '';
 let sortKey = 'createdAt'; // createdAt | statusAt | updatedAt
-let filtersExpanded = false; // 二级筛选（排序/时间/搜索）默认收起
+let filtersExpanded = false; // 二级筛选（排序/时间/搜索/媒体）默认收起
 
 const MAX_NEW_IMAGES = 10;
 const MAX_NEW_VIDEOS = 3;

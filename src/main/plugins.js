@@ -185,22 +185,45 @@ function assertOcrReady() {
   return { ok: true };
 }
 
+function imageLooksPresent(formats) {
+  return (formats || []).some((f) => /png|jpe?g|bmp|dib|bitmap|image/i.test(String(f)));
+}
+
+/** 小图样本签名，避免每次轮询都把整张剪贴板图压成 PNG（会堵住主进程消息循环） */
+function imageSig(img) {
+  const size = img.getSize();
+  const w = Math.max(0, size.width || 0);
+  const h = Math.max(0, size.height || 0);
+  let sample = img;
+  if (w > 48 || h > 48) {
+    const scale = 48 / Math.max(w, h);
+    sample = img.resize({
+      width: Math.max(1, Math.round(w * scale)),
+      height: Math.max(1, Math.round(h * scale)),
+      quality: 'good',
+    });
+  }
+  const bitmap = sample.toBitmap();
+  const hash = crypto.createHash('md5').update(bitmap).digest('hex').slice(0, 16);
+  return `img:${hash}:${w}x${h}`;
+}
+
 /** 剪贴板快贴：只读签名；需要预览/填入时再 withData */
 function clipboardPeek(opts = {}) {
   const withData = !!(opts && opts.withData);
   try {
-    const img = clipboard.readImage();
-    if (img && !img.isEmpty()) {
-      // 用 PNG + 尺寸做签名；toBitmap 多次读取可能不一致，导致启动误报「新图片」
-      const size = img.getSize();
-      const png = img.toPNG();
-      const sig = 'img:' + crypto.createHash('md5').update(png).digest('hex').slice(0, 16)
-        + `:${size.width}x${size.height}`;
-      const out = { ok: true, type: 'image', sig };
-      if (withData) {
-        out.dataUrl = `data:image/png;base64,${png.toString('base64')}`;
+    const formats = clipboard.availableFormats();
+    if (imageLooksPresent(formats)) {
+      const img = clipboard.readImage();
+      if (img && !img.isEmpty()) {
+        const sig = imageSig(img);
+        const out = { ok: true, type: 'image', sig };
+        if (withData) {
+          const png = img.toPNG();
+          out.dataUrl = `data:image/png;base64,${png.toString('base64')}`;
+        }
+        return out;
       }
-      return out;
     }
     const text = String(clipboard.readText() || '');
     const trimmed = text.trim();

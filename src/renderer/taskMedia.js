@@ -35,6 +35,33 @@ function taskMediaItems(task) {
   return imgs.concat(vids);
 }
 
+/** 任务是否含图片 / 视频 / 附件（供列表媒体筛选） */
+function taskMediaFlags(task) {
+  const flags = { image: false, video: false, attachment: false };
+  if (!task) return flags;
+  const atts = task.attachments;
+  if (Array.isArray(atts) && atts.length) flags.attachment = true;
+  for (const m of taskMediaItems(task)) {
+    if (m && m.kind === 'video') flags.video = true;
+    else if (m) flags.image = true;
+  }
+  if ((!flags.image || !flags.video) && typeof resolveTaskDoc === 'function' && typeof countMediaInDoc === 'function') {
+    try {
+      const c = countMediaInDoc(resolveTaskDoc(task));
+      if (c.images) flags.image = true;
+      if (c.videos) flags.video = true;
+    } catch (_) { /* ignore */ }
+  }
+  return flags;
+}
+
+/** selected: 'image'|'video'|'attachment'[]；空数组=不限；OR 匹配 */
+function taskMatchesMediaFilter(task, selected) {
+  if (!selected || !selected.length) return true;
+  const flags = taskMediaFlags(task);
+  return selected.some((k) => !!flags[k]);
+}
+
 /** 把展示用 URL / 入参统一成可写盘的 value（rel | dataUrl | {srcPath}） */
 function coerceMediaValue(value) {
   if (typeof value === 'string') {
@@ -95,6 +122,8 @@ function isThumbReorderEvent(e) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     taskMediaItems,
+    taskMediaFlags,
+    taskMatchesMediaFilter,
     normalizeMediaPayload,
     moveMediaItem,
     capMediaItems,

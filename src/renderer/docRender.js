@@ -119,6 +119,10 @@ function nodeToHtml(node, opts) {
     if (!url && o.skipEmptyMedia) return '';
     const raw = docEsc(srcAttr || '');
     const sz = mediaWidthAttrs(node.attrs && node.attrs.width);
+    // 列表预览：不挂真实 <video>，避免窗口恢复时批量解码卡住
+    if (o.videoPlaceholder) {
+      return `<figure class="doc-media doc-video is-placeholder" contenteditable="false" data-src="${raw}" data-kind="video"${sz.attr}${sz.style}><span class="doc-video-ph" aria-hidden="true"></span><span class="doc-play">▶</span></figure>`;
+    }
     const videoAttrs = o.videoControls
       ? 'controls playsinline preload="metadata"'
       : 'muted playsinline preload="metadata"';
@@ -149,7 +153,12 @@ function countDocMediaNodes(doc) {
 function cardDocPreviewHtml(task) {
   const doc = resolveTaskDoc(task);
   const totalMedia = countDocMediaNodes(doc);
-  const html = docToHtml(doc, { mediaLimit: 4, skipEmptyMedia: true, linkAsSpan: true });
+  const html = docToHtml(doc, {
+    mediaLimit: 4,
+    skipEmptyMedia: true,
+    linkAsSpan: true,
+    videoPlaceholder: true,
+  });
   const more = totalMedia > 4 ? `<span class="thumb-more">+${totalMedia - 4}</span>` : '';
   if (!html.trim() && !more) {
     return `<div class="doc-preview muted">（无文字）</div>`;
@@ -322,12 +331,25 @@ function appendBlocksFromContainer(container, content) {
       inlineFromNode(child, inlineBuf);
       continue;
     }
-    // p/div 等：内部可能还有图
+    // 块级：每个 p/div 独立成段，禁止合并进 inlineBuf（否则换行保存后变成一行）
+    if (tag === 'P' || tag === 'DIV' || tag === 'H1' || tag === 'H2' || tag === 'H3'
+      || tag === 'H4' || tag === 'H5' || tag === 'H6' || tag === 'BLOCKQUOTE'
+      || tag === 'SECTION' || tag === 'ARTICLE') {
+      flushInline();
+      const nested = [];
+      appendBlocksFromContainer(child, nested);
+      if (!nested.length) {
+        content.push({ type: 'paragraph' });
+      } else {
+        for (const n of nested) content.push(n);
+      }
+      continue;
+    }
+    // 其它容器：内部可能还有图
     if (child.childNodes && child.childNodes.length) {
       const before = content.length;
       const nested = [];
       appendBlocksFromContainer(child, nested);
-      // 若嵌套结果只有一个 paragraph，合并进 inlineBuf；若含媒体则 flush 后拼接
       const hasMedia = nested.some((n) => n.type === 'image' || n.type === 'video');
       if (!hasMedia && nested.length === 1 && nested[0].type === 'paragraph') {
         for (const n of (nested[0].content || [])) inlineBuf.push(n);

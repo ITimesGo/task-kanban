@@ -1,13 +1,28 @@
 /**
  * 基于 electron-updater 的自动更新（NSIS 安装版）。
- * 流程：检查 → 下载 → quitAndInstall → 安装并自动重启。
+ * 流程：检查 → 下载（可取消）→ quitAndInstall → 安装并自动重启。
  */
+const path = require('path');
 const { app, net } = require('electron');
 const { compareVersions, isPortableBuild } = require('./appUpdate');
+
+/** 与 electron-updater 共用同一份 CancellationToken（打包后勿裸 require 传递依赖） */
+function loadCancellationApi() {
+  try {
+    return require('builder-util-runtime');
+  } catch (_) {
+    const updaterRoot = path.dirname(require.resolve('electron-updater/package.json'));
+    return require(require.resolve('builder-util-runtime', { paths: [updaterRoot] }));
+  }
+}
+
+const { CancellationToken, CancellationError } = loadCancellationApi();
 
 let autoUpdater = null;
 let configured = false;
 let downloading = false;
+/** @type {{ cancel: () => void, cancelled?: boolean } | null} */
+let downloadToken = null;
 
 function normalizeNotes(raw) {
   if (raw == null) return '';
@@ -113,6 +128,13 @@ function send(win, channel, payload) {
   } catch (_) { /* ignore */ }
 }
 
+function isCancelError(err) {
+  if (!err) return false;
+  if (err instanceof CancellationError) return true;
+  const msg = String(err.message || err || '');
+  return /cancel/i.test(msg);
+}
+
 /**
  * @param {{ ipcHandle: Function, getWin: () => any }} opts
  */
@@ -171,8 +193,19 @@ function registerUpdateIpc({ ipcHandle, getWin }) {
     }
   });
 
+  ipcHandle('update:cancel', () => {
+    if (!downloading || !downloadToken) {
+      return { ok: false, error: '当前没有进行中的下载' };
+    }
+    try {
+      downloadToken.cancel();
+    } catch (_) { /* ignore */ }
+    const win = typeof getWin === 'function' ? getWin() : null;
+    send(win, 'update:downloadProgress', { cancelled: true });
+    return { ok: true, cancelled: true };
+  });
+
   ipcHandle('update:download', async () => {
-    const current = app.getVersion();
     if (!app.isPackaged) {
       return { ok: false, error: '开发模式不支持安装更新' };
     }
@@ -190,6 +223,8 @@ function registerUpdateIpc({ ipcHandle, getWin }) {
     downloading = true;
     const win = typeof getWin === 'function' ? getWin() : null;
     const updater = getAutoUpdater();
+    const token = new CancellationToken();
+    downloadToken = token;
 
     return new Promise((resolve) => {
       let settled = false;
@@ -197,6 +232,7 @@ function registerUpdateIpc({ ipcHandle, getWin }) {
         if (settled) return;
         settled = true;
         downloading = false;
+        downloadToken = null;
         updater.removeListener('download-progress', onProgress);
         updater.removeListener('update-downloaded', onDownloaded);
         updater.removeListener('error', onError);
@@ -204,6 +240,7 @@ function registerUpdateIpc({ ipcHandle, getWin }) {
       };
 
       const onProgress = (p) => {
+        if (token.cancelled) return;
         const percent = p && typeof p.percent === 'number' ? Math.round(p.percent) : null;
         send(win, 'update:downloadProgress', {
           percent,
@@ -213,6 +250,10 @@ function registerUpdateIpc({ ipcHandle, getWin }) {
       };
 
       const onDownloaded = () => {
+        if (token.cancelled) {
+          finish({ ok: false, cancelled: true, error: '已取消' });
+          return;
+        }
         send(win, 'update:downloadProgress', { percent: 100 });
         finish({
           ok: true,
@@ -230,6 +271,10 @@ function registerUpdateIpc({ ipcHandle, getWin }) {
       };
 
       const onError = (err) => {
+        if (token.cancelled || isCancelError(err)) {
+          finish({ ok: false, cancelled: true, error: '已取消' });
+          return;
+        }
         finish({
           ok: false,
           error: (err && err.message) || '下载或安装更新失败',
@@ -240,7 +285,12 @@ function registerUpdateIpc({ ipcHandle, getWin }) {
       updater.once('update-downloaded', onDownloaded);
       updater.once('error', onError);
 
-      updater.downloadUpdate().catch((err) => {
+      updater.downloadUpdate(token).then(() => {
+        // 正常路径由 update-downloaded 收尾；若已取消则在此补一次
+        if (token.cancelled) {
+          finish({ ok: false, cancelled: true, error: '已取消' });
+        }
+      }).catch((err) => {
         onError(err || new Error('downloadUpdate failed'));
       });
     });

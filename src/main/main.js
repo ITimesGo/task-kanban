@@ -1,5 +1,12 @@
 const { app, BrowserWindow, ipcMain, dialog, clipboard, protocol, net, globalShortcut, shell } = require('electron');
 const path = require('path');
+
+// 必须与 electron-builder.yml 的 appId 一致，且在创建窗口之前设置。
+// 否则 Win 任务栏/桌面快捷方式图标会在 Electron 默认图标与应用图标之间来回闪。
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.local.taskkanban');
+}
+
 // 开发模式：监听 src 目录，渲染层文件（html/css/js）变化时自动刷新窗口
 if (!app.isPackaged) {
   require('electron-reload')(path.join(__dirname, '..'), {
@@ -24,6 +31,7 @@ const plugins = require('./plugins');
 const { normalizeMediaPayload } = require('../renderer/taskMedia');
 const taskDoc = require('../renderer/taskDoc');
 const { registerUpdateIpc } = require('./autoUpdate');
+const mediaActions = require('./mediaActions');
 
 // 自定义协议：taskimage://local/images/xxx.png -> 磁盘文件
 // 注意：scheme 注册为 standard，taskimage:// 后第一段是 host，故 URL 形如 taskimage://local/<rel>
@@ -54,6 +62,8 @@ function ipcHandle(channel, listener) {
 function createWindow() {
   win = new BrowserWindow({
     width: 800, height: 600,
+    minWidth: 580,
+    minHeight: 480,
     title: '任务看板',
     // 启动时不立即显示，等渲染进程首次可交互（ready-to-show）再显示，
     // 避免出现"窗口已画出但点不动/滚不动"的未就绪窗口（治愈启动卡顿体验）
@@ -67,7 +77,8 @@ function createWindow() {
       symbolColor: '#303133',
       height: 40,
     },
-    icon: path.join(__dirname, '../../assets/icon.png'),
+    // Windows 用 .ico，避免任务栏先闪默认图标再换成 png
+    icon: path.join(__dirname, '../../assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, '../preload.js'),
       contextIsolation: true,
@@ -449,6 +460,7 @@ function setupStoreHandlers() {
         const ext = (path.extname(p) || '').slice(1).toLowerCase();
         if (videos.ALLOWED.has(ext)) {
           videos.assertVideoFile(p);
+          mediaActions.allowPendingSrcPath(p);
           out.push({ kind: 'video', srcPath: p });
         } else {
           const dataUrl = images.dataUrlForPath(p);
@@ -477,6 +489,7 @@ function setupStoreHandlers() {
       if (text && /^([a-zA-Z]:\\|\\\\).+\.(jpe?g|png|bmp)$/i.test(text)) {
         try {
           images.assertImageFile(text);
+          mediaActions.allowPendingSrcPath(text);
           event.returnValue = { srcPath: text };
           return;
         } catch (_) { /* fall through */ }
@@ -500,6 +513,16 @@ function setupStoreHandlers() {
     const abs = path.join(APP_DATA, rel);
     if (fs.existsSync(abs)) shell.openPath(abs);
   });
+  ipcHandle('media:allowSrcPath', (_e, absPath) => {
+    return { ok: mediaActions.allowPendingSrcPath(absPath) };
+  });
+  ipcHandle('media:copy', (_e, payload) => mediaActions.copyMedia(payload, { appData: APP_DATA }));
+  ipcHandle('media:saveAs', async (e, payload) => {
+    const bw = BrowserWindow.fromWebContents(e.sender) || win;
+    return mediaActions.saveMediaAs(payload, { appData: APP_DATA, win: bw, dialog });
+  });
+  ipcHandle('media:open', (_e, payload) => mediaActions.openMedia(payload, { appData: APP_DATA, shell }));
+  ipcHandle('media:showInFolder', (_e, payload) => mediaActions.showMediaInFolder(payload, { appData: APP_DATA, shell }));
   // 同步：视频播放需要 file://（自定义协议常不支持 Range）
   try { ipcMain.removeAllListeners('media:fileUrlSync'); } catch (_) {}
   ipcMain.on('media:fileUrlSync', (event, rel) => {
@@ -520,9 +543,13 @@ function setupStoreHandlers() {
 function setupTagHandlers() {
   ipcHandle('tags:getAll', () => fsStore.loadTags());
   ipcHandle('tags:create', (_e, name) => {
-    const tags2 = tags.createTag(fsStore.loadTags(), name);
-    fsStore.saveTags(tags2);
-    return { ok: true, tags: tags2 };
+    try {
+      const tags2 = tags.createTag(fsStore.loadTags(), name);
+      fsStore.saveTags(tags2);
+      return { ok: true, tags: tags2 };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   });
   ipcHandle('tags:rename', (_e, id, name) => {
     try {
@@ -536,12 +563,21 @@ function setupTagHandlers() {
     }
   });
   ipcHandle('tags:delete', (_e, id) => {
+    const used = tags.countTagUsage(fsStore.loadTasks(), id);
+    if (used > 0) {
+      return {
+        ok: false,
+        code: 'IN_USE',
+        count: used,
+        error: `该标签正被 ${used} 个任务使用，请先从任务上移除后再删除`,
+      };
+    }
     const had = (list) => (list || []).filter((t) => (t.tags || []).includes(id));
     const affectedTasks = had(fsStore.loadTasks());
     const affectedTrash = had(fsStore.loadTrash());
     const list = tags.deleteTag(fsStore.loadTags(), id);
     fsStore.saveTags(list);
-    // 从所有任务与回收站的 tags 引用中移除该 id
+    // 无占用时可清掉回收站里残留的 tags 引用
     let nextTasks = tags.stripDeletedFromTasks(fsStore.loadTasks(), id);
     let nextTrash = tags.stripDeletedFromTasks(fsStore.loadTrash(), id);
     const tagList = list;
@@ -553,6 +589,19 @@ function setupTagHandlers() {
     fsStore.saveTrash(nextTrash);
     fsStore.rmEmptyMediaDirs();
     return { ok: true, tags: list };
+  });
+  ipcHandle('tags:countUsage', (_e, id) => {
+    const count = tags.countTagUsage(fsStore.loadTasks(), id);
+    return { ok: true, count };
+  });
+  ipcHandle('tags:reorder', (_e, fromId, toId) => {
+    try {
+      const tags2 = tags.reorderTags(fsStore.loadTags(), fromId, toId);
+      fsStore.saveTags(tags2);
+      return { ok: true, tags: tags2 };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   });
   ipcHandle('tasks:setTags', (_e, id, tagIds) => {
     const now = new Date().toISOString();
@@ -609,13 +658,16 @@ function setupSettingsHandlers() {
 
   ipcHandle('export:tasks', async (_e, options = {}) => {
     const format = options.format === 'markdown' || options.format === 'html' ? options.format : 'pdf';
+    const taskIds = Array.isArray(options.taskIds)
+      ? options.taskIds.map(String).filter(Boolean)
+      : [];
     const filters =
       format === 'markdown' ? [{ name: 'Markdown', extensions: ['md'] }]
         : format === 'html' ? [{ name: 'HTML', extensions: ['html'] }]
           : [{ name: 'PDF', extensions: ['pdf'] }];
     const res = await dialog.showSaveDialog(win, {
-      title: '导出任务',
-      defaultPath: exportTasks.defaultExportName(format),
+      title: taskIds.length === 1 ? '导出任务' : '导出任务',
+      defaultPath: exportTasks.defaultExportName(format, { single: taskIds.length === 1 }),
       filters,
     });
     if (res.canceled || !res.filePath) return { ok: false, error: '已取消' };
@@ -625,10 +677,16 @@ function setupSettingsHandlers() {
       sortKey: options.sortKey || 'createdAt',
       includeImages: !!options.includeImages,
       format,
+      taskIds,
     };
     try {
-      const tasks = fsStore.loadTasks();
+      let tasks = fsStore.loadTasks();
       const tags = fsStore.loadTags();
+      if (taskIds.length) {
+        const want = new Set(taskIds);
+        tasks = tasks.filter((t) => t && want.has(String(t.id)));
+        if (!tasks.length) return { ok: false, error: '任务不存在或已删除' };
+      }
       if (format === 'html') return exportTasks.writeHtmlFile(res.filePath, tasks, tags, opts, APP_DATA);
       if (format === 'markdown') return exportTasks.writeMarkdownFile(res.filePath, tasks, tags, opts, APP_DATA);
       return await exportTasks.writePdfFile(res.filePath, tasks, tags, opts, APP_DATA, BrowserWindow);

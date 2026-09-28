@@ -1,6 +1,7 @@
 /** 剪贴板快贴：仅在应用运行期间出现「新复制」时提示，启动时已有内容不弹 */
 (function () {
-  const AUTO_HIDE_MS = 30000; // 不理睬则自动消失
+  const AUTO_HIDE_MS = 5000; // 不理睬则自动消失
+  const URGENT_MS = 2000; // 剩余不足此时长标红提示
 
   let enabled = false;
   let lastSig = '';
@@ -71,7 +72,7 @@
     const left = Math.max(0, deadline - Date.now());
     const pct = left / AUTO_HIDE_MS;
     fill.style.transform = `scaleX(${pct})`;
-    track.classList.toggle('is-urgent', left <= 5000);
+    track.classList.toggle('is-urgent', left <= URGENT_MS);
     track.title = `${Math.ceil(left / 1000)} 秒后自动关闭`;
 
     if (left <= 0) {
@@ -90,7 +91,7 @@
     fill.style.transform = 'scaleX(1)';
     deadline = Date.now() + AUTO_HIDE_MS;
     remainMs = AUTO_HIDE_MS;
-    track.title = '30 秒后自动关闭';
+    track.title = '5 秒后自动关闭';
     rafId = requestAnimationFrame(tickProgress);
   }
 

@@ -33,16 +33,23 @@ function showConfirm(text) {
     $('#confirmOverlay').classList.remove('hidden');
   });
 }
-$('#confirmOk').addEventListener('click', () => {
+function isConfirmOpen() {
+  const el = document.getElementById('confirmOverlay');
+  return !!(el && !el.classList.contains('hidden'));
+}
+$('#confirmOk').addEventListener('click', (e) => {
+  e.stopPropagation();
   $('#confirmOverlay').classList.add('hidden');
   if (confirmResolve) { confirmResolve(true); confirmResolve = null; }
 });
-$('#confirmCancel').addEventListener('click', () => {
+$('#confirmCancel').addEventListener('click', (e) => {
+  e.stopPropagation();
   $('#confirmOverlay').classList.add('hidden');
   if (confirmResolve) { confirmResolve(false); confirmResolve = null; }
 });
 $('#confirmOverlay').addEventListener('click', (e) => {
   if (e.target.id === 'confirmOverlay') {
+    e.stopPropagation();
     $('#confirmOverlay').classList.add('hidden');
     if (confirmResolve) { confirmResolve(false); confirmResolve = null; }
   }

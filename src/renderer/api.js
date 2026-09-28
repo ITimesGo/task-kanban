@@ -1,13 +1,14 @@
 // 薄封装，renderer 不直接依赖 window.taskAPI 细节
 window.API = {};
 for (const k of ['getAllTasks','createTask','toggleStatus','updateTask','deleteTask','pickImages','pickMedia','pasteImage','pasteImageSync','imageUrl','localFileUrl',
-  'getAllTags','createTag','renameTag','deleteTag','setTaskTags',
+  'getAllTags','createTag','renameTag','deleteTag','countTagUsage','reorderTag','setTaskTags',
   'getStoragePath','openStoragePath','changeStoragePath','resetStoragePath','cleanupStorage',
   'setAlwaysOnTop','setTitleBarOverlay',
   'pickAttachments','openAttachment','pathForFile',
+  'allowMediaSrcPath','copyMedia','saveMediaAs','openMedia','showMediaInFolder',
   'listTrash','restoreTrash','purgeTrash','emptyTrash',
   'exportBackup','importBackup','exportTasks',
-  'getAppVersion','checkForUpdate','downloadUpdate','openExternal']) {
+  'getAppVersion','checkForUpdate','downloadUpdate','cancelUpdate','openExternal']) {
   window.API[k] = (...a) => window.taskAPI[k](...a);
 }
 window.API.onUpdateDownloadProgress = (cb) => window.taskAPI.onUpdateDownloadProgress(cb);

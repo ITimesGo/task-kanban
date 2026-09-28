@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('taskAPI', {
   createTag: (name) => ipcRenderer.invoke('tags:create', name),
   renameTag: (id, name) => ipcRenderer.invoke('tags:rename', id, name),
   deleteTag: (id) => ipcRenderer.invoke('tags:delete', id),
+  countTagUsage: (id) => ipcRenderer.invoke('tags:countUsage', id),
+  reorderTag: (fromId, toId) => ipcRenderer.invoke('tags:reorder', fromId, toId),
   setTaskTags: (id, tagIds) => ipcRenderer.invoke('tasks:setTags', id, tagIds),
   getStoragePath: () => ipcRenderer.invoke('storage:get'),
   openStoragePath: () => ipcRenderer.invoke('storage:open'),
@@ -35,6 +37,11 @@ contextBridge.exposeInMainWorld('taskAPI', {
   setTitleBarOverlay: (opts) => ipcRenderer.invoke('window:setTitleBarOverlay', opts),
   pickAttachments: () => ipcRenderer.invoke('file:pick'),
   openAttachment: (rel) => ipcRenderer.invoke('file:open', rel),
+  allowMediaSrcPath: (absPath) => ipcRenderer.invoke('media:allowSrcPath', absPath),
+  copyMedia: (payload) => ipcRenderer.invoke('media:copy', payload),
+  saveMediaAs: (payload) => ipcRenderer.invoke('media:saveAs', payload),
+  openMedia: (payload) => ipcRenderer.invoke('media:open', payload),
+  showMediaInFolder: (payload) => ipcRenderer.invoke('media:showInFolder', payload),
   pathForFile: (file) => {
     if (!file) return '';
     try {
@@ -64,6 +71,7 @@ contextBridge.exposeInMainWorld('taskAPI', {
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
   checkForUpdate: () => ipcRenderer.invoke('update:check'),
   downloadUpdate: () => ipcRenderer.invoke('update:download'),
+  cancelUpdate: () => ipcRenderer.invoke('update:cancel'),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   onUpdateDownloadProgress: (cb) => {
     const handler = (_e, d) => cb(d);

@@ -52,17 +52,33 @@ function getCreatePanelMode() {
   return createPanelModeState.mode;
 }
 
-function prefersReducedMotion() {
-  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+function isCreatePanelOpen() {
+  return panelVisibility(createPanelModeState.mode, createPanelModeState.open).showPanel;
 }
 
-function syncPinButton(pinBtn) {
-  if (!pinBtn) return;
-  const pinned = createPanelModeState.mode === 'docked';
-  pinBtn.classList.toggle('is-pinned', pinned);
-  pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
-  pinBtn.title = pinned ? '取消固定' : '固定在右侧';
-  pinBtn.setAttribute('aria-label', pinBtn.title);
+/** 收起时展开新建栏（不改默认视图偏好）。返回是否刚执行了展开。 */
+function ensureCreatePanelOpen({ animate = true, focus = true } = {}) {
+  const wasOpen = isCreatePanelOpen();
+  if (!wasOpen) {
+    commitCreatePanelState(reduceCreatePanelAction(createPanelModeState, 'openFab'), {
+      persist: false,
+      animate,
+    });
+  }
+  if (focus) {
+    const delay = (!wasOpen && animate && !prefersReducedMotion())
+      ? Math.round(CREATE_PANEL_MOTION_MS * 0.35)
+      : 0;
+    window.setTimeout(() => {
+      const ed = document.querySelector('#createEditor .ProseMirror, #createEditor .rich-surface, #createEditor [contenteditable="true"]');
+      if (ed && typeof ed.focus === 'function') ed.focus();
+    }, delay);
+  }
+  return !wasOpen;
+}
+
+function prefersReducedMotion() {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 function setFabVisible(fab, visible, { instant = false } = {}) {
@@ -102,7 +118,6 @@ function syncCreatePanelDom({ animate = true } = {}) {
   const layout = document.getElementById('layout');
   const panel = document.getElementById('createPanel');
   const fab = document.getElementById('createFab');
-  const pinBtn = document.getElementById('createPinBtn');
   const wasCollapsed = !!(layout && layout.classList.contains('is-create-collapsed'));
   const willCollapse = !showPanel;
   const visibilityChanged = wasCollapsed !== willCollapse;
@@ -117,13 +132,17 @@ function syncCreatePanelDom({ animate = true } = {}) {
     layout.classList.toggle('is-create-motion', doAnimate);
   }
 
-  syncPinButton(pinBtn);
-
   if (showPanel) {
     if (panel) {
       panel.hidden = false;
       panel.classList.remove('hidden');
       panel.setAttribute('aria-hidden', 'false');
+    }
+    // 展开前先按当前窗口钳好目标宽，避免先冲到旧的 400 再闪回
+    if (window.__layoutSplit && typeof window.__layoutSplit.prepareExpandWidth === 'function') {
+      window.__layoutSplit.prepareExpandWidth();
+    } else if (window.__layoutSplit && typeof window.__layoutSplit.reapplyWidth === 'function') {
+      window.__layoutSplit.reapplyWidth();
     }
     // 展开：先以宽度 0 挂回布局，再下一帧去掉 collapsed，才能播宽度动画；列表随 flex 变宽
     if (doAnimate && wasCollapsed && layout && panel) {
@@ -214,7 +233,6 @@ function applyCreatePanelMode(nextMode, { reason = 'mode-change' } = {}) {
 
 function bindCreatePanelModeUi() {
   const fab = document.getElementById('createFab');
-  const pinBtn = document.getElementById('createPinBtn');
   const collapseBtn = document.getElementById('createCollapseBtn');
   if (fab) {
     fab.addEventListener('click', () => {
@@ -230,18 +248,10 @@ function bindCreatePanelModeUi() {
   }
   if (collapseBtn) {
     collapseBtn.addEventListener('click', () => {
+      // 收起只改本次会话；启动仍按设置「默认视图」里的 createPanelMode
       commitCreatePanelState(reduceCreatePanelAction(createPanelModeState, 'collapse'), {
-        persist: true,
+        persist: false,
         animate: true,
-      });
-    });
-  }
-  if (pinBtn) {
-    pinBtn.addEventListener('click', () => {
-      const action = createPanelModeState.mode === 'docked' ? 'unpin' : 'pin';
-      commitCreatePanelState(reduceCreatePanelAction(createPanelModeState, action), {
-        persist: true,
-        animate: false,
       });
     });
   }
@@ -265,6 +275,13 @@ if (typeof module !== 'undefined' && module.exports) {
     reduceCreatePanelAction,
     applyCreatePanelMode,
     getCreatePanelMode,
+    isCreatePanelOpen,
+    ensureCreatePanelOpen,
     syncCreatePanelDom,
   };
+}
+
+if (typeof window !== 'undefined') {
+  window.ensureCreatePanelOpen = ensureCreatePanelOpen;
+  window.isCreatePanelOpen = isCreatePanelOpen;
 }

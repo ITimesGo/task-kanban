@@ -482,11 +482,20 @@ function clearUpdateNotes() {
   renderUpdateNotes('');
 }
 
+function setCancelUpdateVisible(on) {
+  const cancelBtn = document.getElementById('cancelUpdateBtn');
+  if (!cancelBtn) return;
+  cancelBtn.classList.toggle('hidden', !on);
+  cancelBtn.hidden = !on;
+  cancelBtn.disabled = false;
+}
+
 function applyUpdateCheckResult(res, { silent = false } = {}) {
   const hint = document.getElementById('aboutUpdateHint');
   const dlBtn = document.getElementById('downloadUpdateBtn');
   pendingUpdateUrl = '';
   pendingUpdateLatest = '';
+  setCancelUpdateVisible(false);
   if (dlBtn) {
     dlBtn.classList.add('hidden');
     dlBtn.hidden = true;
@@ -537,6 +546,7 @@ async function fillAboutPanel() {
   pendingUpdateUrl = '';
   pendingUpdateLatest = '';
   clearUpdateNotes();
+  setCancelUpdateVisible(false);
   if (dlBtn) {
     dlBtn.classList.add('hidden');
     dlBtn.hidden = true;
@@ -583,22 +593,37 @@ document.getElementById('checkUpdateBtn')?.addEventListener('click', async () =>
 document.getElementById('downloadUpdateBtn')?.addEventListener('click', async () => {
   const btn = document.getElementById('downloadUpdateBtn');
   const checkBtn = document.getElementById('checkUpdateBtn');
+  const cancelBtn = document.getElementById('cancelUpdateBtn');
   const hint = document.getElementById('aboutUpdateHint');
   if (btn) btn.disabled = true;
   if (checkBtn) checkBtn.disabled = true;
-  if (hint) hint.textContent = '正在下载更新…';
+  setCancelUpdateVisible(true);
+  if (hint) hint.textContent = '正在下载更新…（可点「取消更新」中止）';
   const offProgress = API.onUpdateDownloadProgress?.((p) => {
     if (!hint || !p) return;
-    if (p.percent != null) hint.textContent = `正在下载更新… ${p.percent}%`;
+    if (p.cancelled) {
+      hint.textContent = '已取消下载';
+      return;
+    }
+    if (p.percent != null) hint.textContent = `正在下载更新… ${p.percent}%（可取消）`;
   });
   try {
     const res = await API.downloadUpdate();
     if (res && res.ok && res.applied) {
       if (hint) hint.textContent = res.message || '下载完成，正在安装并重启…';
       setUpdateBadge(false);
+      setCancelUpdateVisible(false);
       return;
     }
-    if (hint) hint.textContent = (res && (res.error || res.message)) || '更新失败';
+    if (res && res.cancelled) {
+      if (hint) {
+        hint.textContent = pendingUpdateLatest
+          ? `已取消下载。仍可点击「立即更新」安装 ${pendingUpdateLatest}。`
+          : '已取消下载。可稍后再次点击「立即更新」。';
+      }
+    } else if (hint) {
+      hint.textContent = (res && (res.error || res.message)) || '更新失败';
+    }
     if (btn) btn.disabled = false;
     if (checkBtn) checkBtn.disabled = false;
   } catch (err) {
@@ -606,8 +631,19 @@ document.getElementById('downloadUpdateBtn')?.addEventListener('click', async ()
     if (btn) btn.disabled = false;
     if (checkBtn) checkBtn.disabled = false;
   } finally {
+    setCancelUpdateVisible(false);
     try { offProgress && offProgress(); } catch (_) { /* ignore */ }
   }
+});
+
+document.getElementById('cancelUpdateBtn')?.addEventListener('click', async () => {
+  const cancelBtn = document.getElementById('cancelUpdateBtn');
+  const hint = document.getElementById('aboutUpdateHint');
+  if (cancelBtn) cancelBtn.disabled = true;
+  if (hint) hint.textContent = '正在取消…';
+  try {
+    await API.cancelUpdate();
+  } catch (_) { /* download 侧会结束 */ }
 });
 
 restoreUpdateBadgeFromCache();

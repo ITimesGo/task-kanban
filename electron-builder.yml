@@ -24,9 +24,11 @@ nsis:
   perMachine: false
   allowToChangeInstallationDirectory: true
   allowElevation: false
-  createDesktopShortcut: true
+  # 桌面快捷方式不默认创建；由 build/installer.nsh 在「完成」页提供勾选（默认不勾选）
+  createDesktopShortcut: false
   createStartMenuShortcut: true
   shortcutName: 任务看板
+  include: build/installer.nsh
   installerIcon: assets/icon.ico
   uninstallerIcon: assets/icon.ico
   installerHeaderIcon: assets/icon.ico

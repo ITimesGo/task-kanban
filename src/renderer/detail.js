@@ -1,9 +1,45 @@
-async function toggleStatus(t) {
+async function settleStatusChange(id) {
+  const key = String(id);
+  const { list } = buildFilteredList();
+  const stillVisible = list.some((x) => String(x.id) === key);
+  if (!stillVisible && ui && typeof ui.animateCardOut === 'function') {
+    await ui.animateCardOut(key);
+  }
+  await refresh();
+}
+
+async function toggleStatus(t, { skipUndo = false } = {}) {
+  if (!t || t.id == null) return;
+  const id = String(t.id);
+  if (typeof clearSelection === 'function') clearSelection({ render: false });
   const updated = await API.toggleStatus(t.id);
   const idx = tasks.findIndex((x) => x.id === t.id);
   if (idx >= 0) tasks[idx] = updated;
-  await refresh();
-  if (editing && editing.id === t.id) { editing = updated; updateOpenDetail(); }
+  if (editing && editing.id === t.id) {
+    editing = updated;
+    updateOpenDetail();
+  }
+
+  if (skipUndo || !ui || typeof ui.beginCardStatusUndo !== 'function') {
+    await settleStatusChange(id);
+    return;
+  }
+
+  const card = document.querySelector(`#cards .card[data-task-id="${CSS.escape(id)}"]`);
+  if (!card) {
+    await settleStatusChange(id);
+    return;
+  }
+
+  card.classList.toggle('done', updated.status === 'done');
+  ui.beginCardStatusUndo(card, updated, {
+    onUndo: async () => {
+      await toggleStatus(updated, { skipUndo: true });
+    },
+    onCommit: async () => {
+      await settleStatusChange(id);
+    },
+  });
 }
 
 async function openDetail(t) {
@@ -13,7 +49,45 @@ async function openDetail(t) {
   $('#detailOverlay').classList.remove('hidden');
 }
 
+function attSnapshotKey(a) {
+  if (typeof a === 'string') return a;
+  if (a && typeof a === 'object') {
+    if (a.srcPath) return `path:${a.srcPath}`;
+    if (a.rel) return `rel:${a.rel}`;
+    if (a.name) return `name:${a.name}`;
+  }
+  return String(a);
+}
+
+function isEditDirty() {
+  if (!detailState || detailState.mode !== 'edit') return false;
+  const check = window._editIsDirty;
+  return typeof check === 'function' ? !!check() : false;
+}
+
+/** 编辑态有未保存改动时确认；返回是否可以离开 */
+async function confirmLeaveEditIfDirty() {
+  if (!isEditDirty()) return true;
+  return showConfirm('有未保存的修改，确定离开？未保存的内容将丢失。');
+}
+
+async function closeDetailModal() {
+  if (!(await confirmLeaveEditIfDirty())) return;
+  $('#detailOverlay').classList.add('hidden');
+  disposeEditEditor();
+  window._editIsDirty = null;
+  if (detailState) detailState.mode = 'view';
+  if (typeof window.syncClipboardQuickTargetLabel === 'function') {
+    window.syncClipboardQuickTargetLabel();
+  }
+}
+
 function disposeEditEditor() {
+  window._editIsDirty = null;
+  if (typeof window._cleanupEditTagMenu === 'function') {
+    try { window._cleanupEditTagMenu(); } catch (_) { /* ignore */ }
+    window._cleanupEditTagMenu = null;
+  }
   const ed = window.editEditor;
   window.editEditor = null;
   window.applyClipboardToEdit = null;
@@ -34,10 +108,12 @@ function updateOpenDetail() {
     ui.renderDetail(editing);
     const done = editing.status === 'done';
     ui.detailActions.innerHTML = `
-      <button id="delBtn" class="btn-link danger-link" type="button">移入回收站</button>
+      <div class="detail-footer-left">
+        <button id="delBtn" class="danger" type="button">移入回收站</button>
+        <button id="toggleBtn" type="button">${done ? '取消完成' : '标记完成'}</button>
+      </div>
       <div class="detail-footer-right">
-        <button id="editBtn" type="button">编辑</button>
-        <button id="toggleBtn" class="primary" type="button">${done ? '取消完成' : '标记完成'}</button>
+        <button id="editBtn" class="primary" type="button">编辑</button>
       </div>`;
     document.getElementById('toggleBtn').addEventListener('click', () => toggleStatus(editing));
     document.getElementById('editBtn').addEventListener('click', () => {
@@ -56,35 +132,250 @@ function renderEditDetail() {
   ui.detailBody.innerHTML = `
     <div id="editDrop">
       <div id="editEditor" class="rich-editor-host"></div>
-      <div id="editTags" class="tag-select"></div>
-      <div id="editAttachments" class="attachments"></div>
-      <button id="editAddFile" class="icon-btn" title="添加附件" aria-label="添加附件"><svg class="att-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-      <button id="editAdd" class="icon-btn" title="添加图片或视频" aria-label="添加图片或视频"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></button>
+      <div class="edit-side">
+        <div id="editTagWrap" class="task-tag-wrap">
+          <div id="editTagControl" class="multi-select">
+            <div id="editTagSelected" class="ms-selected"><span class="ms-placeholder">选择标签</span></div>
+            <span class="ms-arrow">▾</span>
+          </div>
+          <div id="editTagDropdown" class="ms-dropdown hidden">
+            <input id="editTagSearch" class="ms-search" type="text" placeholder="搜索标签…" />
+            <div id="editTagOptions"></div>
+          </div>
+        </div>
+        <div id="editAttachments" class="attachments"></div>
+      </div>
       <div id="editProgress" class="upload-progress hidden">
         <div class="up-bar"><div class="up-fill" id="editProgressFill"></div></div>
         <span class="up-text" id="editProgressText"></span>
       </div>
-      <p class="hint" style="margin-top:10px">支持拖入或 Ctrl+V 粘贴；工具栏可加粗/列表/插图</p>
     </div>`;
 
   const editTagIds = (editing.tags || []).slice();
-  const drawEditTags = () => {
-    const box = $('#editTags');
-    box.innerHTML = tagList.length
-      ? tagList.map((t) =>
-          `<button type="button" class="tag-pick ${editTagIds.includes(t.id) ? 'on' : ''}" data-id="${t.id}">${ui.esc(t.name)}</button>`
-        ).join('')
-      : '<span class="hint">尚无标签</span>';
-    box.querySelectorAll('.tag-pick').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        const i = editTagIds.indexOf(id);
-        if (i >= 0) editTagIds.splice(i, 1); else editTagIds.push(id);
-        drawEditTags();
-      });
+  /** @type {{ id: string, input: HTMLInputElement, orig: string } | null} */
+  let editTagRename = null;
+  const editTagEls = () => ({
+    selected: document.getElementById('editTagSelected'),
+    control: document.getElementById('editTagControl'),
+    options: document.getElementById('editTagOptions'),
+    search: document.getElementById('editTagSearch'),
+    emptyPlaceholder: tagList.length ? '选择标签' : '尚无标签，输入名称后可创建',
+  });
+  const closeEditTagDropdown = () => {
+    const dd = document.getElementById('editTagDropdown');
+    const ctrl = document.getElementById('editTagControl');
+    if (dd) dd.classList.add('hidden');
+    if (ctrl) ctrl.classList.remove('open');
+    editTagRename = null;
+    editTagRenameCommitPromise = null;
+  };
+  let editTagRenameCommitPromise = null;
+  const cancelEditTagRename = () => {
+    if (!editTagRename) return;
+    editTagRename = null;
+    editTagRenameCommitPromise = null;
+    syncEditTagOptions();
+  };
+  const commitEditTagRename = () => {
+    if (editTagRenameCommitPromise) return editTagRenameCommitPromise;
+    if (!editTagRename) return Promise.resolve(true);
+    const state = editTagRename;
+    if (!state.input) {
+      editTagRename = null;
+      syncEditTagOptions();
+      return Promise.resolve(true);
+    }
+    const next = String(state.input.value || '').trim();
+    const p = (async () => {
+      if (next === state.orig) {
+        editTagRename = null;
+        syncEditTagOptions();
+        return true;
+      }
+      const res = await API.renameTag(state.id, next);
+      if (!res.ok) {
+        alert(res.error || '保存失败');
+        if (editTagRename && editTagRename.input === state.input) {
+          try { state.input.focus(); } catch (_) { /* ignore */ }
+        }
+        return false;
+      }
+      editTagRename = null;
+      tagList = res.tags;
+      afterTagMutation();
+      return true;
+    })();
+    editTagRenameCommitPromise = p;
+    p.finally(() => {
+      if (editTagRenameCommitPromise === p) editTagRenameCommitPromise = null;
     });
+    return p;
+  };
+  const startEditTagRename = (id, optEl) => {
+    if (!optEl || editTagRename) return;
+    const t = tagList.find((x) => x.id === id);
+    if (!t) return;
+    editTagRename = { id, input: null, orig: t.name };
+    syncEditTagOptions();
+    const box = document.getElementById('editTagOptions');
+    const row = box && box.querySelector(`.ms-option-manage[data-id="${CSS.escape(id)}"]`);
+    if (!row) {
+      editTagRename = null;
+      syncEditTagOptions();
+      return;
+    }
+    const nameEl = row.querySelector('.ms-option-name');
+    if (!nameEl) {
+      editTagRename = null;
+      syncEditTagOptions();
+      return;
+    }
+    row.classList.add('is-renaming');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'ms-rename-input';
+    input.maxLength = 15;
+    input.value = t.name;
+    nameEl.replaceWith(input);
+    editTagRename = { id, input, orig: t.name };
+    input.addEventListener('click', (e) => e.stopPropagation());
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        input.blur();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelEditTagRename();
+      }
+    });
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!editTagRename || editTagRename.input !== input) return;
+        commitEditTagRename();
+      }, 0);
+    });
+    try { input.focus(); input.select(); } catch (_) { /* ignore */ }
+  };
+  const createTagFromEditPicker = async (name) => {
+    try {
+      const res = await API.createTag(name);
+      if (!res || !res.ok) {
+        alert((res && res.error) || '新增失败');
+        return;
+      }
+      const beforeIds = new Set(tagList.map((t) => t.id));
+      tagList = res.tags;
+      const created = tagList.find((t) => !beforeIds.has(t.id));
+      const search = document.getElementById('editTagSearch');
+      if (search) search.value = '';
+      afterTagMutation(created ? { selectedId: created.id, selectEdit: true } : {});
+    } catch (err) {
+      alert('新增失败：' + (err && err.message ? err.message : err));
+    }
+  };
+  const deleteTagFromEditPicker = async (id) => {
+    const res = await confirmDeleteTag(id);
+    if (!res) return;
+    tagList = res.tags;
+    afterTagMutation({ deletedId: id });
+  };
+  const reorderTagFromEditPicker = async (fromId, toId) => {
+    if (editTagRename || editTagRenameCommitPromise) return;
+    if (typeof isConfirmOpen === 'function' && isConfirmOpen()) return;
+    try {
+      const res = await API.reorderTag(fromId, toId);
+      if (!res || !res.ok) {
+        alert((res && res.error) || '调整顺序失败');
+        syncEditTagOptions();
+        return;
+      }
+      tagList = res.tags;
+      afterTagMutation();
+    } catch (err) {
+      alert('调整顺序失败：' + (err && err.message ? err.message : err));
+      syncEditTagOptions();
+    }
+  };
+  const syncEditTagOptions = () => {
+    const els = editTagEls();
+    ui.renderManageableTagFilter(tagList, editTagIds, {
+      onChange: (id, checked) => {
+        const i = editTagIds.indexOf(id);
+        if (checked && i < 0) editTagIds.push(id);
+        if (!checked && i >= 0) editTagIds.splice(i, 1);
+        drawEditTags();
+      },
+      onRename: (id, optEl) => startEditTagRename(id, optEl),
+      onDelete: (id) => { deleteTagFromEditPicker(id); },
+      onCreate: (name) => { createTagFromEditPicker(name); },
+      onReorder: (fromId, toId) => { reorderTagFromEditPicker(fromId, toId); },
+      canReorder: () => !editTagRename && !editTagRenameCommitPromise
+        && !(typeof isConfirmOpen === 'function' && isConfirmOpen()),
+    }, els);
+  };
+  const drawEditTags = () => {
+    const els = editTagEls();
+    if (!els.control) return;
+    ui.renderTagSelectedRemovable(editTagIds, (id) => {
+      const i = editTagIds.indexOf(id);
+      if (i >= 0) editTagIds.splice(i, 1);
+      drawEditTags();
+    }, els);
+    syncEditTagOptions();
   };
   drawEditTags();
+  setEditTagRedraw(({ deletedId, selectedId }) => {
+    if (deletedId) {
+      const i = editTagIds.indexOf(deletedId);
+      if (i >= 0) editTagIds.splice(i, 1);
+    }
+    if (selectedId && !editTagIds.includes(selectedId)) editTagIds.push(selectedId);
+    drawEditTags();
+  });
+  const editTagCtrl = document.getElementById('editTagControl');
+  if (editTagCtrl) {
+    editTagCtrl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const dd = document.getElementById('editTagDropdown');
+      if (!dd) return;
+      const opening = dd.classList.contains('hidden');
+      if (opening) {
+        dd.classList.remove('hidden');
+        editTagCtrl.classList.add('open');
+        const search = document.getElementById('editTagSearch');
+        if (search) { search.value = ''; try { search.focus(); } catch (_) {} }
+        syncEditTagOptions();
+      } else {
+        requestCloseEditTagDropdown();
+      }
+    });
+  }
+  const requestCloseEditTagDropdown = async () => {
+    if (typeof isConfirmOpen === 'function' && isConfirmOpen()) return;
+    if (editTagRename) {
+      const ok = await commitEditTagRename();
+      if (!ok) return;
+    }
+    closeEditTagDropdown();
+  };
+  const onDocClickEditTag = (e) => {
+    if (e.target.closest('#editTagWrap')) return;
+    if (e.target.closest('#confirmOverlay')) return;
+    if (typeof isConfirmOpen === 'function' && isConfirmOpen()) return;
+    requestCloseEditTagDropdown();
+  };
+  document.addEventListener('click', onDocClickEditTag);
+  const cleanupEditTagMenu = () => {
+    document.removeEventListener('click', onDocClickEditTag);
+    setEditTagRedraw(null);
+    closeEditTagDropdown();
+    if (window._cleanupEditTagMenu === cleanupEditTagMenu) {
+      window._cleanupEditTagMenu = null;
+    }
+  };
+  window._cleanupEditTagMenu = cleanupEditTagMenu;
 
   const editEditorHost = document.getElementById('editEditor');
   let editEditor = null;
@@ -130,15 +421,19 @@ function renderEditDetail() {
     }
   };
 
-  document.getElementById('editAdd').addEventListener('click', () => {
-    if (typeof editEditor === 'object' && editEditor) {
-      // onPickMedia already wired; trigger same
-      editEditor.surface.focus();
-      document.querySelector('#editEditor [data-cmd="image"]')?.click();
-    }
-  });
-
   const editAttachments = (editing.attachments || []).map((a) => typeof a === 'string' ? a : a.rel);
+  const editBaseline = {
+    doc: JSON.stringify(editEditor.getDoc()),
+    tags: editTagIds.slice().sort().join('\0'),
+    atts: editAttachments.map(attSnapshotKey).join('\0'),
+  };
+  window._editIsDirty = () => {
+    if (!editEditor) return false;
+    const doc = JSON.stringify(editEditor.getDoc());
+    const tags = editTagIds.slice().sort().join('\0');
+    const atts = editAttachments.map(attSnapshotKey).join('\0');
+    return doc !== editBaseline.doc || tags !== editBaseline.tags || atts !== editBaseline.atts;
+  };
   const drawEditAttachments = () => {
     const box = document.getElementById('editAttachments');
     box.innerHTML = editAttachments.length ? editAttachments.map((a, i) => {
@@ -150,14 +445,6 @@ function renderEditDetail() {
     });
   };
   drawEditAttachments();
-  document.getElementById('editAddFile').addEventListener('click', async () => {
-    const paths = await API.pickAttachments();
-    (paths || []).forEach((p) => {
-      if (editAttachments.length >= 10) { alert('最多添加10个附件'); return; }
-      editAttachments.push(p);
-    });
-    drawEditAttachments();
-  });
 
   const editDrop = $('#editDrop');
   const MAX_EDIT_MB = 10;
@@ -199,11 +486,22 @@ function renderEditDetail() {
   });
 
   ui.detailActions.innerHTML = `
+    <div class="detail-footer-left">
+      <button id="editAddFile" class="icon-btn" type="button" title="添加附件" aria-label="添加附件"><svg class="att-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+    </div>
     <span class="detail-footer-spacer"></span>
     <div class="detail-footer-right">
       <button id="cancelEditBtn" type="button">取消</button>
       <button id="saveBtn" class="primary" type="button">保存</button>
     </div>`;
+  document.getElementById('editAddFile').addEventListener('click', async () => {
+    const paths = await API.pickAttachments();
+    (paths || []).forEach((p) => {
+      if (editAttachments.length >= 10) { alert('最多添加10个附件'); return; }
+      editAttachments.push(p);
+    });
+    drawEditAttachments();
+  });
   document.getElementById('saveBtn').addEventListener('click', async () => {
     const body = await editEditor.getPayload();
     const editAtts = editAttachments.map((a) => {
@@ -230,6 +528,8 @@ function renderEditDetail() {
       hideUploadProgress('editProgress');
     }
     if (typeof sub === 'function') sub();
+    cleanupEditTagMenu();
+    window._editIsDirty = null;
     const updated = (await API.getAllTasks()).find((x) => x.id === editing.id);
     const idx = tasks.findIndex((x) => x.id === editing.id);
     if (idx >= 0) tasks[idx] = updated;
@@ -238,7 +538,10 @@ function renderEditDetail() {
     await refresh();
     updateOpenDetail();
   });
-  document.getElementById('cancelEditBtn').addEventListener('click', () => {
+  document.getElementById('cancelEditBtn').addEventListener('click', async () => {
+    if (!(await confirmLeaveEditIfDirty())) return;
+    cleanupEditTagMenu();
+    window._editIsDirty = null;
     detailState.mode = 'view';
     updateOpenDetail();
   });
@@ -247,6 +550,7 @@ function renderEditDetail() {
 async function deleteTask() {
   const ok = await showConfirm('确定将该任务移入回收站吗？可在设置中恢复。');
   if (!ok) return;
+  const id = editing && editing.id;
   const res = await API.deleteTask(editing.id);
   if (res && res.ok === false) { alert(res.error || '删除失败'); return; }
   $('#detailOverlay').classList.add('hidden');
@@ -255,25 +559,20 @@ async function deleteTask() {
   if (typeof window.syncClipboardQuickTargetLabel === 'function') {
     window.syncClipboardQuickTargetLabel();
   }
+  if (id != null && ui && typeof ui.animateCardOut === 'function') {
+    await ui.animateCardOut(id);
+  }
   await refresh();
 }
 
 $('#detailOverlay').addEventListener('click', (e) => {
   if (e.target.id !== 'detailOverlay') return;
-  $('#detailOverlay').classList.add('hidden');
-  disposeEditEditor();
-  if (detailState) detailState.mode = 'view';
-  if (typeof window.syncClipboardQuickTargetLabel === 'function') {
-    window.syncClipboardQuickTargetLabel();
-  }
+  // 编辑态：不可点遮罩关闭
+  if (detailState && detailState.mode === 'edit') return;
+  closeDetailModal();
 });
 $('#detailClose').addEventListener('click', () => {
-  $('#detailOverlay').classList.add('hidden');
-  disposeEditEditor();
-  if (detailState) detailState.mode = 'view';
-  if (typeof window.syncClipboardQuickTargetLabel === 'function') {
-    window.syncClipboardQuickTargetLabel();
-  }
+  closeDetailModal();
 });
 
 let _editPasteAdd = null;
