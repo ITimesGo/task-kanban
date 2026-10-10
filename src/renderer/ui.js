@@ -308,7 +308,115 @@ const ui = (() => {
     });
   }
 
-  function renderCards(tasks, {
+  /** 列表点击委托：避免每张卡挂 2～3 个监听，筛选切换时建卡更快 */
+  let cardsClickBound = false;
+  /** @type {{ taskById: Map<string, any>, onQuickToggle?: Function, onOpen?: Function, onToggleSelect?: Function }|null} */
+  let cardsClickHandlers = null;
+  function ensureCardsClickDelegation() {
+    if (cardsClickBound || !cardsEl) return;
+    cardsClickBound = true;
+    cardsEl.addEventListener('click', (e) => {
+      const h = cardsClickHandlers;
+      if (!h) return;
+      const pick = e.target.closest && e.target.closest('.card-pick');
+      if (pick && cardsEl.contains(pick)) {
+        e.stopPropagation();
+        const card = pick.closest('.card');
+        const t = card && h.taskById.get(String(card.dataset.taskId));
+        if (t && typeof h.onToggleSelect === 'function') h.onToggleSelect(t);
+        return;
+      }
+      const toggle = e.target.closest && e.target.closest('[data-action="toggle"]');
+      if (toggle && cardsEl.contains(toggle)) {
+        e.stopPropagation();
+        const card = toggle.closest('.card');
+        const id = card && card.dataset.taskId;
+        if (id == null) return;
+        const pending = pendingUndoById.get(String(id));
+        if (pending) {
+          const remain = pending.endsAt - performance.now();
+          if (remain > 0) {
+            const undo = pending.onUndo;
+            abandonCardStatusUndo(id);
+            if (typeof undo === 'function') undo();
+          } else {
+            const commit = pending.onCommit;
+            abandonCardStatusUndo(id);
+            if (typeof commit === 'function') commit();
+          }
+          return;
+        }
+        const t = h.taskById.get(String(id));
+        if (t && typeof h.onQuickToggle === 'function') h.onQuickToggle(t);
+        return;
+      }
+      const card = e.target.closest && e.target.closest('.card');
+      if (!card || !cardsEl.contains(card)) return;
+      const t = h.taskById.get(String(card.dataset.taskId));
+      if (t && typeof h.onOpen === 'function') h.onOpen(t);
+    });
+  }
+
+  let cardsRenderToken = 0;
+  // 首屏极少张同步落地 → 切换筛选几乎不顿；余下每帧少量补齐
+  const CARDS_FIRST = 3;
+  const CARDS_BATCH = 6;
+
+  function buildCardEl(t, {
+    timeField,
+    timeLabel,
+    matchById,
+    selected,
+    hasSelection,
+  }) {
+    const card = document.createElement('div');
+    const isSelected = !!(selected && t.id != null && selected.has(String(t.id)));
+    card.className = 'card'
+      + (t.status === 'done' ? ' done' : '')
+      + (hasSelection ? ' select-mode' : '')
+      + (isSelected ? ' is-selected' : '');
+    const done = t.status === 'done';
+    const atts = (t.attachments || []).map((a) => {
+      const rel = typeof a === 'string' ? a : a.rel;
+      const name = rel ? rel.split('/').pop() : (typeof a === 'object' && a.name) || '';
+      return name ? `<span class="card-att" title="${esc(name)}">${ATT_ICON}<span>${esc(name)}</span></span>` : '';
+    }).filter(Boolean).join('');
+    const attRow = atts ? `<div class="att-chips">${atts}</div>` : '';
+    const matchRow = matchHintHtml(matchById && t.id != null ? matchById[t.id] : null);
+    const ocrRow = cardOcrProgressHtml(t.id);
+    card.dataset.taskId = t.id;
+    const actionLabel = done ? '取消完成' : '标记完成';
+    const statusIco = done
+      ? `<span class="card-action-ico" aria-hidden="true">${CHECK_ICO}</span>`
+      : '<span class="card-action-ico is-pending-mark" aria-hidden="true"></span>';
+    card.innerHTML = `
+      <button type="button" class="card-action${done ? ' is-done' : ''}" data-action="toggle" title="${actionLabel}" aria-label="${actionLabel}">${statusIco}</button>
+      <div class="card-main">
+        <div class="card-title">
+          ${typeof cardDocPreviewHtml === 'function' ? cardDocPreviewHtml(t) : `<div class="text">${esc(t.text) || '<span class="muted">（无文字）</span>'}</div>`}
+        </div>
+        ${matchRow}
+        ${attRow}
+        ${cardMetaChips(t, timeField, timeLabel, { isSelected })}
+        ${ocrRow}
+      </div>`;
+    const toggleBtn = card.querySelector('[data-action="toggle"]');
+    if (toggleBtn) {
+      const pending = pendingUndoById.get(String(t.id));
+      if (pending) {
+        const remain = Math.max(0, pending.endsAt - performance.now());
+        if (remain > 0) paintUndoButton(toggleBtn, remain, pending.toDone);
+        else {
+          const commit = pending.onCommit;
+          abandonCardStatusUndo(t.id);
+          if (typeof commit === 'function') commit();
+        }
+      }
+    }
+    return card;
+  }
+
+  function renderCards(taskList, {
     onQuickToggle,
     onOpen,
     emptyText,
@@ -319,78 +427,36 @@ const ui = (() => {
     onToggleSelect,
   } = {}) {
     ensureCardsMediaMenu();
+    ensureCardsClickDelegation();
+    const token = ++cardsRenderToken;
+    const taskById = new Map();
+    for (const t of taskList || []) {
+      if (t && t.id != null) taskById.set(String(t.id), t);
+    }
+    cardsClickHandlers = { taskById, onQuickToggle, onOpen, onToggleSelect };
     cardsEl.innerHTML = '';
-    if (!tasks.length) {
+    if (!taskList.length) {
       cardsEl.innerHTML = `<p class="empty">${esc(emptyText || '暂无任务')}</p>`;
       return;
     }
     const selected = selectedIds instanceof Set ? selectedIds : null;
     const hasSelection = !!(selected && selected.size);
-    for (const t of tasks) {
-      const card = document.createElement('div');
-      const isSelected = !!(selected && t.id != null && selected.has(String(t.id)));
-      card.className = 'card'
-        + (t.status === 'done' ? ' done' : '')
-        + (hasSelection ? ' select-mode' : '')
-        + (isSelected ? ' is-selected' : '');
-      const done = t.status === 'done';
-      const atts = (t.attachments || []).map((a) => {
-        const rel = typeof a === 'string' ? a : a.rel;
-        const name = rel ? rel.split('/').pop() : (typeof a === 'object' && a.name) || '';
-        return name ? `<span class="card-att" title="${esc(name)}">${ATT_ICON}<span>${esc(name)}</span></span>` : '';
-      }).filter(Boolean).join('');
-      const attRow = atts ? `<div class="att-chips">${atts}</div>` : '';
-      const matchRow = matchHintHtml(matchById && t.id != null ? matchById[t.id] : null);
-      const ocrRow = cardOcrProgressHtml(t.id);
-      card.dataset.taskId = t.id;
-      const actionLabel = done ? '取消完成' : '标记完成';
-      const statusIco = done
-        ? `<span class="card-action-ico" aria-hidden="true">${CHECK_ICO}</span>`
-        : '<span class="card-action-ico is-pending-mark" aria-hidden="true"></span>';
-      card.innerHTML = `
-        <button type="button" class="card-action${done ? ' is-done' : ''}" data-action="toggle" title="${actionLabel}" aria-label="${actionLabel}">${statusIco}</button>
-        <div class="card-main">
-          <div class="card-title">
-            ${typeof cardDocPreviewHtml === 'function' ? cardDocPreviewHtml(t) : `<div class="text">${esc(t.text) || '<span class="muted">（无文字）</span>'}</div>`}
-          </div>
-          ${matchRow}
-          ${attRow}
-          ${cardMetaChips(t, timeField, timeLabel, { isSelected })}
-          ${ocrRow}
-        </div>`;
-      card.querySelector('.card-pick').addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (typeof onToggleSelect === 'function') onToggleSelect(t);
-      });
-      const toggleBtn = card.querySelector('[data-action="toggle"]');
-      if (toggleBtn) {
-        const pending = pendingUndoById.get(String(t.id));
-        if (pending) {
-          const remain = Math.max(0, pending.endsAt - performance.now());
-          if (remain > 0) {
-            paintUndoButton(toggleBtn, remain, pending.toDone);
-            toggleBtn.onclick = (e) => {
-              e.stopPropagation();
-              const cur = pendingUndoById.get(String(t.id));
-              if (!cur) return;
-              const undo = cur.onUndo;
-              abandonCardStatusUndo(t.id);
-              if (typeof undo === 'function') undo();
-            };
-          } else {
-            const commit = pending.onCommit;
-            abandonCardStatusUndo(t.id);
-            if (typeof commit === 'function') commit();
-          }
-        } else {
-          toggleBtn.onclick = (e) => {
-            e.stopPropagation();
-            if (typeof onQuickToggle === 'function') onQuickToggle(t);
-          };
-        }
-      }
-      card.addEventListener('click', () => onOpen(t));
-      cardsEl.appendChild(card);
+    const opts = { timeField, timeLabel, matchById, selected, hasSelection };
+    let i = 0;
+    const appendBatch = (size) => {
+      if (token !== cardsRenderToken) return false;
+      const frag = document.createDocumentFragment();
+      const end = Math.min(i + size, taskList.length);
+      for (; i < end; i++) frag.appendChild(buildCardEl(taskList[i], opts));
+      cardsEl.appendChild(frag);
+      return i < taskList.length;
+    };
+    // 先画一小截（同步），交互立刻有反馈；后面的卡按帧续画
+    if (appendBatch(CARDS_FIRST)) {
+      const step = () => {
+        if (appendBatch(CARDS_BATCH)) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
     }
   }
 

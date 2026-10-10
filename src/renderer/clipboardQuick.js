@@ -5,6 +5,7 @@
 
   let enabled = false;
   let lastSig = '';
+  let lastSeq = null;
   /** 是否已完成启动基线：基线前绝不弹窗 */
   let primed = false;
   let pending = null;
@@ -157,9 +158,15 @@
     scheduleAutoHide();
   }
 
-  async function poll() {
+  /**
+   * @param {{ resume?: boolean }} [opts]
+   * resume=true：从后台切回，只同步序号/基线，绝不 readImage、不弹条
+   */
+  async function poll(opts = {}) {
+    const resume = !!(opts && opts.resume);
     if (!enabled || busy) return;
     if (document.hidden) return;
+    if (!resume && typeof document.hasFocus === 'function' && !document.hasFocus()) return;
     const settings = document.getElementById('settingsOverlay');
     const lightbox = document.getElementById('lightboxOverlay');
     if (settings && !settings.classList.contains('hidden')) return;
@@ -167,16 +174,28 @@
 
     busy = true;
     try {
-      const res = await API.clipboardPeek({ withData: false });
+      // 轻量探测：图片路径不 readImage，避免切回前台被大图卡死
+      const probe = typeof API.clipboardProbe === 'function'
+        ? API.clipboardProbe
+        : API.clipboardPeek;
+      const res = await probe({
+        lastSeq: lastSeq != null ? lastSeq : undefined,
+      });
       if (!res || !res.ok) return;
-
-      if (!res.sig || res.type === 'empty') {
-        if (!primed) primed = true;
-        lastSig = '';
+      if (res.seq != null) lastSeq = res.seq;
+      if (res.unchanged) {
+        if (resume) primed = true;
         return;
       }
 
-      if (!primed) {
+      if (!res.sig || res.type === 'empty') {
+        lastSig = '';
+        primed = true;
+        return;
+      }
+
+      // 启动基线 / 从后台恢复：只记住当前剪贴板，不弹提示
+      if (!primed || resume) {
         lastSig = res.sig;
         primed = true;
         return;
@@ -184,14 +203,50 @@
 
       if (res.sig === lastSig) return;
       lastSig = res.sig;
-      const full = await API.clipboardPeek({ withData: true });
-      if (!full || !full.ok || full.sig !== res.sig) return;
-      showBar(full);
+
+      if (res.type === 'image') {
+        // 不在轮询里读图；提示条无缩略图，点填入时再拉原图
+        showBar({
+          type: 'image',
+          sig: res.sig,
+          light: true,
+          previewOnly: true,
+        });
+        return;
+      }
+      if (res.type === 'text') {
+        showBar({
+          type: 'text',
+          sig: res.sig,
+          preview: res.preview,
+          text: res.text,
+        });
+      }
     } catch (_) {
       /* ignore */
     } finally {
       busy = false;
     }
+  }
+
+  /** 填入/放大时才 readImage（用户主动操作，可接受短暂等待） */
+  async function resolvePayloadForApply(payload) {
+    if (!payload) return payload;
+    if (payload.type === 'text') return payload;
+    if (payload.type !== 'image') return payload;
+    if (payload.previewOnly === false && payload.dataUrl) return payload;
+    try {
+      const full = await API.clipboardPeek({ withData: true, quality: 'full' });
+      if (full && full.ok && full.type === 'image' && full.dataUrl) {
+        return {
+          ...payload,
+          dataUrl: full.dataUrl,
+          previewOnly: false,
+          sig: full.sig || payload.sig,
+        };
+      }
+    } catch (_) { /* ignore */ }
+    return payload;
   }
 
   async function refreshClipboardQuick() {
@@ -208,6 +263,7 @@
       enabled = false;
       hideBar();
       lastSig = '';
+      lastSeq = null;
       primed = false;
       if (timer) { clearInterval(timer); timer = null; }
       return;
@@ -215,30 +271,40 @@
 
     const justEnabled = !enabled;
     enabled = true;
-    if (!timer) timer = setInterval(poll, 1200);
+    if (!timer) timer = setInterval(poll, 2500);
     if (justEnabled || !primed) {
       lastSig = '';
+      lastSeq = null;
       primed = false;
-      poll();
+      setTimeout(() => { if (enabled) poll(); }, justEnabled ? 2800 : 0);
     }
   }
 
   window.refreshClipboardQuick = refreshClipboardQuick;
 
-  document.getElementById('clipQuickApply')?.addEventListener('click', () => {
+  document.getElementById('clipQuickApply')?.addEventListener('click', async () => {
     if (!pending) return;
-    const ok = typeof window.applyClipboardQuick === 'function'
-      ? window.applyClipboardQuick(pending)
-      : false;
-    if (ok) hideBar();
+    const btn = document.getElementById('clipQuickApply');
+    if (btn) btn.disabled = true;
+    try {
+      const payload = await resolvePayloadForApply(pending);
+      const ok = typeof window.applyClipboardQuick === 'function'
+        ? window.applyClipboardQuick(payload)
+        : false;
+      if (ok) hideBar();
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   });
   document.getElementById('clipQuickDismiss')?.addEventListener('click', hideBar);
 
-  const thumbClick = (e) => {
+  const thumbClick = async (e) => {
     e.stopPropagation();
-    if (!pending || pending.type !== 'image' || !pending.dataUrl) return;
+    if (!pending || pending.type !== 'image') return;
+    const payload = await resolvePayloadForApply(pending);
+    if (!payload || !payload.dataUrl) return;
     if (typeof window.showLightbox === 'function') {
-      window.showLightbox(pending.dataUrl, { type: 'image' });
+      window.showLightbox(payload.dataUrl, { type: 'image' });
     }
   };
   const thumb = thumbEl();
@@ -265,8 +331,17 @@
   }
 
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && enabled) poll();
+    if (document.hidden) return;
+    if (!enabled) return;
+    // 切回前台：只同步基线，禁止走弹条/读图路径
+    setTimeout(() => { if (enabled) poll({ resume: true }); }, 0);
   });
 
-  refreshClipboardQuick();
+  window.addEventListener('focus', () => {
+    if (!enabled || document.hidden) return;
+    setTimeout(() => { if (enabled) poll({ resume: true }); }, 0);
+  });
+
+  // 延迟启动，让首屏先可交互
+  setTimeout(() => { refreshClipboardQuick(); }, 3200);
 })();

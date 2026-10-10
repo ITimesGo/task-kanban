@@ -3,6 +3,7 @@ const { pathToFileURL } = require('url');
 
 contextBridge.exposeInMainWorld('taskAPI', {
   getAllTasks: () => ipcRenderer.invoke('tasks:getAll'),
+  getTask: (id) => ipcRenderer.invoke('tasks:get', id),
   createTask: (data) => ipcRenderer.invoke('tasks:create', data),
   toggleStatus: (id) => ipcRenderer.invoke('tasks:toggle', id),
   updateTask: (id, data) => ipcRenderer.invoke('tasks:update', id, data),
@@ -91,6 +92,7 @@ contextBridge.exposeInMainWorld('taskAPI', {
   setPluginEnabled: (id, enabled) => ipcRenderer.invoke('plugins:setEnabled', id, enabled),
   installPlugin: (id) => ipcRenderer.invoke('plugins:install', id),
   uninstallPlugin: (id) => ipcRenderer.invoke('plugins:uninstall', id),
+  clipboardProbe: (opts) => ipcRenderer.invoke('plugins:clipboardProbe', opts || {}),
   clipboardPeek: (opts) => ipcRenderer.invoke('plugins:clipboardPeek', opts || {}),
   ocrIndexGetAll: () => ipcRenderer.invoke('ocrIndex:getAll'),
   ocrIndexSet: (rel, text) => ipcRenderer.invoke('ocrIndex:set', rel, text),

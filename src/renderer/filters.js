@@ -19,7 +19,8 @@ const SORTS = [
   { key: 'updatedAt', label: '按编辑更新', short: '编辑' },
 ];
 
-const PAGE_SIZE_OPTIONS = [50, 100, 200];
+// 单页过大时 DOM/图片解码会明显卡顿，封顶 100
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
 const PAGER_COUNT = 3;
 
 function rangeBounds() {
@@ -355,13 +356,25 @@ function renderFilteredPage(matchById) {
   renderPagination(total, maxPage);
 }
 
-async function refresh() {
-  tasks = await API.getAllTasks();
+/**
+ * @param {{ reload?: boolean }} [opts]
+ * reload=false：筛选/翻页/排序只用内存缓存，避免大数据量反复 IPC 整表传输卡住
+ */
+async function refresh(opts = {}) {
+  const reload = opts.reload !== false;
+  if (reload || !Array.isArray(tasks) || !tasks.length) {
+    tasks = await API.getAllTasks();
+  }
   const { list, matchById } = buildFilteredList();
   lastFilteredList = list;
   pruneSelection(list);
   syncSelectionUI();
   renderFilteredPage(matchById);
+}
+
+/** 仅重绘当前筛选结果（不读盘） */
+function refreshLocal() {
+  return refresh({ reload: false });
 }
 
 function pagerRange(current, total) {
@@ -383,7 +396,7 @@ function pagerRange(current, total) {
 function jumpTo(p) {
   if (p === page) return;
   page = p;
-  refresh();
+  refreshLocal();
 }
 
 function renderPageSizeDropdown() {
@@ -398,7 +411,7 @@ function renderPageSizeDropdown() {
       page = 1;
       $('#pageSizeDropdown').classList.add('hidden');
       $('#pageSizeSelect').classList.remove('open');
-      refresh();
+      refreshLocal();
     });
   });
   $('#pageSizeLabel').textContent = `${pageSize} 条/页`;
@@ -465,7 +478,7 @@ function removeTagFilterId(id) {
   page = 1;
   clearSelection({ render: false });
   renderTagFilter();
-  refresh();
+  refreshLocal();
 }
 
 function renderTagFilter() {
@@ -475,7 +488,7 @@ function renderTagFilter() {
     ui.renderTagSelected(tagFilter, removeTagFilterId);
     page = 1;
     clearSelection({ render: false });
-    refresh();
+    refreshLocal();
   });
   ui.renderTagSelected(tagFilter, removeTagFilterId);
 }
@@ -515,7 +528,7 @@ function closeToolbarPopups({ clearSearch = false } = {}) {
       searchQuery = '';
       page = 1;
       clearSelection({ render: false });
-      refresh();
+      refreshLocal();
     }
     syncFilterBadge();
   }
@@ -543,7 +556,7 @@ document.getElementById('tagFilterClear').addEventListener('click', (e) => {
   page = 1;
   clearSelection({ render: false });
   renderTagFilter();
-  refresh();
+  refreshLocal();
 });
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#tagFilterWrap')) closeTagDropdown();
@@ -592,13 +605,20 @@ if (typeof MutationObserver !== 'undefined') {
     requestAnimationFrame(() => syncStatusSegThumb(false));
   }).observe(skinRoot, { attributes: true, attributeFilter: ['data-skin'] });
 }
+/** 滑块先画一帧，下一帧开始刷列表（列表内部再「先 3 张、后分帧」） */
+function scheduleListRefresh() {
+  requestAnimationFrame(() => {
+    refreshLocal();
+  });
+}
+
 function selectStatus(key) {
   if (filter === key) return;
   filter = key;
   page = 1;
   clearSelection({ render: false });
   renderStatusSeg();
-  refresh();
+  scheduleListRefresh();
 }
 const statusWrapEl = document.getElementById('statusWrap');
 if (statusWrapEl) {
@@ -633,7 +653,7 @@ function selectRange(key) {
   renderRangeDropdown();
   closeRangeDropdown();
   syncFilterBadge();
-  refresh();
+  scheduleListRefresh();
 }
 document.getElementById('rangeSelect').addEventListener('click', (e) => {
   e.stopPropagation();
@@ -668,7 +688,7 @@ function selectSort(key) {
   renderSortDropdown();
   closeSortDropdown();
   syncFilterBadge();
-  refresh();
+  scheduleListRefresh();
 }
 document.getElementById('sortSelect').addEventListener('click', (e) => {
   e.stopPropagation();
@@ -729,10 +749,11 @@ async function syncOcrSearchPlugin() {
 window.refreshOcrSearchPlugin = async () => {
   await syncOcrSearchPlugin();
   // 无搜索词时索引更新不影响列表结果，避免整表重绘卡住
-  if (String(searchQuery || '').trim()) refresh();
+  if (String(searchQuery || '').trim()) refreshLocal();
 };
 
-syncOcrSearchPlugin();
+// 延后拉 OCR 索引，避免和首屏任务列表抢主进程
+setTimeout(() => { syncOcrSearchPlugin(); }, 1800);
 if (typeof API !== 'undefined' && API.onOcrIndexUpdated) {
   API.onOcrIndexUpdated(() => {
     if (typeof window.refreshOcrSearchPlugin === 'function') window.refreshOcrSearchPlugin();
@@ -872,7 +893,7 @@ function resetSecondaryFilters() {
   if (changed) {
     page = 1;
     clearSelection({ render: false });
-    refresh();
+    refreshLocal();
   }
 }
 
@@ -963,7 +984,7 @@ function toggleMediaFilter(key, checked) {
   syncFilterBadge();
   page = 1;
   clearSelection({ render: false });
-  refresh();
+  refreshLocal();
 }
 
 const mediaFilterSelect = document.getElementById('mediaFilterSelect');
@@ -999,7 +1020,7 @@ if (searchInput) {
       page = 1;
       clearSelection({ render: false });
       syncFilterBadge();
-      refresh();
+      refreshLocal();
     }, 200);
   });
   searchInput.addEventListener('keydown', (e) => {
@@ -1009,7 +1030,7 @@ if (searchInput) {
         searchQuery = '';
         page = 1;
         clearSelection({ render: false });
-        refresh();
+        refreshLocal();
       }
       syncFilterBadge();
       searchInput.blur();

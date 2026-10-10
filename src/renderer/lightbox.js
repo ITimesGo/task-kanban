@@ -60,61 +60,18 @@ async function imageToDataUrl(img) {
   const h = img.naturalHeight || img.height;
   if (!w || !h) throw new Error('图片尚未加载完成');
 
-  // 更积极放大 + 直方图拉伸 + 浅色截图二值化，提升灰字/聊天记录识别
+  // 回退路径：无本地 rel 时，放大后送主进程（主进程仍会再预处理）
   const minSide = Math.min(w, h);
-  const scale = Math.min(3, Math.max(1.5, 2000 / minSide));
+  const scale = Math.min(3, Math.max(1, 1800 / minSide));
   const dw = Math.round(w * scale);
   const dh = Math.round(h * scale);
   const canvas = document.createElement('canvas');
   canvas.width = dw;
   canvas.height = dh;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, 0, 0, dw, dh);
-
-  try {
-    const id = ctx.getImageData(0, 0, dw, dh);
-    const d = id.data;
-    const n = d.length / 4;
-    const hist = new Uint32Array(256);
-    let sum = 0;
-    for (let i = 0; i < d.length; i += 4) {
-      const g = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
-      d[i] = d[i + 1] = d[i + 2] = g;
-      hist[g] += 1;
-      sum += g;
-    }
-    const mean = sum / n;
-    // 2%–98% 分位拉伸，压掉灰雾
-    const loCount = n * 0.02;
-    const hiCount = n * 0.98;
-    let acc = 0;
-    let lo = 0;
-    let hi = 255;
-    for (let v = 0; v < 256; v++) {
-      acc += hist[v];
-      if (acc >= loCount) { lo = v; break; }
-    }
-    acc = 0;
-    for (let v = 0; v < 256; v++) {
-      acc += hist[v];
-      if (acc >= hiCount) { hi = v; break; }
-    }
-    if (hi <= lo) { lo = 0; hi = 255; }
-    const range = hi - lo || 1;
-    for (let i = 0; i < d.length; i += 4) {
-      let g = d[i];
-      g = Math.max(0, Math.min(255, Math.round(((g - lo) / range) * 255)));
-      // 浅色界面（聊天截图）再二值化，灰字更利落
-      if (mean > 170) g = g > 150 ? 255 : 0;
-      else g = Math.max(0, Math.min(255, Math.round((g - 128) * 1.35 + 128)));
-      d[i] = d[i + 1] = d[i + 2] = g;
-    }
-    ctx.putImageData(id, 0, 0);
-  } catch (_) {
-    // getImageData 失败时仍用放大原图
-  }
   return canvas.toDataURL('image/png');
 }
 
@@ -155,11 +112,22 @@ async function refreshLightboxOcrEntry() {
 window.refreshLightboxOcrEntry = refreshLightboxOcrEntry;
 
 async function runLightboxOcr() {
-  if (lb.ocrBusy) return;
   if (lb.mediaType === 'video' || !lb.ocrAvailable) return;
+  // 识别进行中：只重新展开面板看进度，不重复发起识别
+  if (lb.ocrBusy) {
+    showOcrPanel();
+    return;
+  }
+  // 已有结果且面板已收起：先展开查看，避免误触发重跑
+  const panel = $('#lightboxOcrPanel');
+  const textEl = $('#lightboxOcrText');
+  const panelHidden = !panel || panel.classList.contains('hidden');
+  if (panelHidden && textEl && textEl.value.trim()) {
+    showOcrPanel();
+    return;
+  }
 
   const img = $('#lightboxImg');
-  const textEl = $('#lightboxOcrText');
   const copyBtn = $('#lightboxOcrCopy');
   lb.ocrBusy = true;
   showOcrPanel();
@@ -173,8 +141,11 @@ async function runLightboxOcr() {
   });
 
   try {
-    const dataUrl = await imageToDataUrl(img);
-    const res = await API.ocrRecognize(dataUrl);
+    const rel = relFromImageSrc(lb.currentSrc || (img && img.src) || '');
+    // 优先传本地相对路径，由主进程读原图并预处理（避免 canvas 二次压缩丢细节）
+    const res = rel
+      ? await API.ocrRecognize({ rel })
+      : await API.ocrRecognize(await imageToDataUrl(img));
     if (!res || !res.ok) {
       if (res && (res.code === 'NOT_INSTALLED' || res.code === 'DISABLED')) {
         setOcrStatus(res.error || '插件不可用');
@@ -186,7 +157,8 @@ async function runLightboxOcr() {
     if (textEl) textEl.value = res.text || '';
     if (copyBtn) copyBtn.disabled = !(res.text && res.text.trim());
     setOcrStatus(res.text && res.text.trim() ? '识别完成，可选择或复制文字' : '未识别到文字');
-    const rel = relFromImageSrc(lb.currentSrc || img.src);
+    // 收起过面板时，完成后自动再展开，避免只能看到「识别中」却打不开
+    showOcrPanel();
     if (rel && res.text && res.text.trim()) {
       try {
         await API.ocrIndexSet(rel, res.text);
@@ -195,6 +167,7 @@ async function runLightboxOcr() {
     }
   } catch (err) {
     setOcrStatus(err.message || String(err));
+    showOcrPanel();
   } finally {
     if (typeof offProgress === 'function') offProgress();
     lb.ocrBusy = false;
@@ -262,7 +235,7 @@ function waitLightboxImageReady() {
 /** 任意图片来源：打开预览（必要时）并跑 OCR */
 async function runMediaOcr(local) {
   if (!local || local.kind === 'video') return;
-  if (lb.ocrBusy) return;
+  // 识别中：若灯箱已打开则交给 runLightboxOcr 展开面板；否则仍要先打开对应图片
   const src = srcFromMediaLocal(local);
   if (!src) {
     alert('无法识别该图片');
@@ -399,6 +372,7 @@ document.getElementById('lightboxCloseBtn')?.addEventListener('click', (e) => {
 });
 document.getElementById('lightboxOcrHide')?.addEventListener('click', (e) => {
   e.stopPropagation();
+  // 仅收起面板；后台识别继续。再次右键「识别中…（点击查看）」可重新打开。
   $('#lightboxOcrPanel')?.classList.add('hidden');
 });
 document.getElementById('lightboxOcrCopy')?.addEventListener('click', async (e) => {

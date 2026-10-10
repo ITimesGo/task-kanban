@@ -7,5 +7,6 @@ if (typeof applySavedViewDefaults === 'function') {
 loadTags();
 refresh();
 if (typeof window.silentCheckUpdate === 'function') {
-  setTimeout(() => { window.silentCheckUpdate(); }, 1500);
+  // 再晚一点，避免和首屏/剪贴板抢主进程与网络
+  setTimeout(() => { window.silentCheckUpdate(); }, 5000);
 }

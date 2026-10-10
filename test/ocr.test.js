@@ -25,3 +25,15 @@ describe('pickBetterText', () => {
     assert.equal(pickBetterText(a, b), a);
   });
 });
+
+describe('otsuThreshold', () => {
+  it('returns a mid threshold for a bimodal hist', () => {
+    const { otsuThreshold } = require('../src/main/ocr');
+    const hist = new Uint32Array(256);
+    for (let i = 0; i < 80; i++) hist[i] = 5;
+    for (let i = 180; i < 256; i++) hist[i] = 5;
+    const total = 80 * 5 + 76 * 5;
+    const t = otsuThreshold(hist, total);
+    assert.ok(t >= 60 && t <= 190, `got ${t}`);
+  });
+});

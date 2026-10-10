@@ -173,23 +173,28 @@
         const busy = typeof lb !== 'undefined' && lb && lb.ocrBusy;
         extraItems.unshift({
           id: 'ocr',
-          label: busy ? '识别中…' : '提取文字',
-          disabled: !canRun || !!busy,
+          label: busy ? '识别中…（点击查看）' : '提取文字',
+          disabled: !canRun,
           title: busy
-            ? '正在识别'
+            ? '识别进行中，点击重新打开识别框'
             : (canRun ? '离线识别图片中的文字' : '图片未就绪'),
         });
       }
     }
 
+    const base = buildMediaMenuItems({
+      kind,
+      hasLocalPath,
+      hasDataUrl,
+      canDelete: !!opts.canDelete,
+    });
+    // 「复制」固定第一；提取文字等扩展项紧随其后
+    const copyItem = base.find((x) => x && x.id === 'copy');
+    const rest = base.filter((x) => !x || x.id !== 'copy');
     const items = [
+      ...(copyItem ? [copyItem] : []),
       ...extraItems,
-      ...buildMediaMenuItems({
-        kind,
-        hasLocalPath,
-        hasDataUrl,
-        canDelete: !!opts.canDelete,
-      }),
+      ...rest,
     ];
 
     mountMenu(opts, items, local, kind);

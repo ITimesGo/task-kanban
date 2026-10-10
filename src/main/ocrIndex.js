@@ -7,20 +7,30 @@ function indexPath() {
   return path.join(app.getPath('userData'), 'ocr-index.json');
 }
 
+/** 内存缓存：避免每次 getAll / hasEntry 都同步读盘卡主进程 */
+let indexCache = null;
+/** @type {Record<string, string>|null} */
+let textsCache = null;
+
 function readIndex() {
+  if (indexCache) return indexCache;
   try {
     const raw = fs.readFileSync(indexPath(), 'utf8');
     const data = JSON.parse(raw);
-    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+    indexCache = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
   } catch (_) {
-    return {};
+    indexCache = {};
   }
+  return indexCache;
 }
 
 function writeIndex(map) {
   const file = indexPath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(map, null, 2), 'utf8');
+  indexCache = map && typeof map === 'object' ? map : {};
+  textsCache = null;
+  // 紧凑 JSON，减小读写体积
+  fs.writeFileSync(file, JSON.stringify(indexCache), 'utf8');
 }
 
 function normalizeRel(rel) {
@@ -48,12 +58,14 @@ function collectImageRels(tasks) {
 
 /** @returns {Record<string, string>} rel -> text */
 function getAllTexts() {
+  if (textsCache) return textsCache;
   const map = readIndex();
   const out = {};
   for (const [k, v] of Object.entries(map)) {
     if (typeof v === 'string') out[k] = v;
     else if (v && typeof v.text === 'string') out[k] = v.text;
   }
+  textsCache = out;
   return out;
 }
 

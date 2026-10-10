@@ -1,11 +1,11 @@
 const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
-const { app } = require('electron');
+const { app, nativeImage } = require('electron');
 const { createWorker, PSM } = require('tesseract.js');
 
-/** 中文截图为主；混入 eng 易把灰字噪声识别成乱码英文 */
-const LANGS = ['chi_sim'];
+/** 中文为主，附带英文：截图里常见按钮/代码/URL；乱码短英文行仍由 cleanup 过滤 */
+const LANGS = ['chi_sim', 'eng'];
 /** best 质量包：体积更大，中文印刷/截图更准；独立缓存目录 */
 const LANG_BASE = 'https://tessdata.projectnaptha.com/4.0.0_best';
 const TESSDATA_SUBDIR = 'tessdata-best';
@@ -18,11 +18,14 @@ function tessDir() {
   return dir;
 }
 
+function langMinBytes(lang) {
+  return String(lang).startsWith('chi') ? 8 * 1024 * 1024 : 512 * 1024;
+}
+
 function langReady(dir, lang) {
   const p = path.join(dir, `${lang}.traineddata`);
   try {
-    // best 包更大；过小视为损坏/旧残留
-    return fs.existsSync(p) && fs.statSync(p).size > 8 * 1024 * 1024;
+    return fs.existsSync(p) && fs.statSync(p).size > langMinBytes(lang);
   } catch (_) {
     return false;
   }
@@ -108,7 +111,7 @@ async function ensureLangs(onProgress) {
       status: 'need',
       missing,
       percent: 0,
-      message: `需下载高精度中文语言包（约 40–70MB），之后可离线识别`,
+      message: `需下载高精度语言包（中文+英文，约 50–80MB），之后可离线识别`,
     });
   }
   for (const lang of LANGS) {
@@ -181,12 +184,148 @@ function cleanupOcrText(raw) {
 function scoreOcrText(text) {
   const t = String(text || '');
   const cjk = (t.match(/[\u4e00-\u9fff]/g) || []).length;
-  const junk = (t.match(/[^\u4e00-\u9fff0-9A-Za-z\s，。！？、：；“”‘’（）【】《》\.\,\!\?\:\;\-\_\/]/g) || []).length;
-  return cjk * 3 + t.length - junk * 2;
+  const alnum = (t.match(/[A-Za-z0-9]/g) || []).length;
+  const junk = (t.match(/[^\u4e00-\u9fff0-9A-Za-z\s，。！？、：；“”‘’（）【】《》\.\,\!\?\:\;\-\_\/\@\#]/g) || []).length;
+  return cjk * 4 + alnum + t.length - junk * 3;
 }
 
 function pickBetterText(a, b) {
   return scoreOcrText(a) >= scoreOcrText(b) ? a : b;
+}
+
+/** Otsu 阈值（灰度直方图） */
+function otsuThreshold(hist, total) {
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += i * hist[i];
+  let sumB = 0;
+  let wB = 0;
+  let maxVar = -1;
+  let threshold = 128;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (!wB) continue;
+    const wF = total - wB;
+    if (!wF) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const v = wB * wF * (mB - mF) * (mB - mF);
+    if (v > maxVar) {
+      maxVar = v;
+      threshold = t;
+    }
+  }
+  return threshold;
+}
+
+/**
+ * 主进程统一预处理：放大 → 灰度 → 分位拉伸 → Otsu/对比度
+ * 返回 PNG data URL；失败则返回原始 input
+ */
+function preprocessForOcr(input) {
+  try {
+    if (!input || typeof input !== 'string') return input;
+    let img = input.startsWith('data:')
+      ? nativeImage.createFromDataURL(input)
+      : nativeImage.createFromPath(input);
+    if (!img || img.isEmpty()) return input;
+
+    let { width, height } = img.getSize();
+    if (!width || !height) return input;
+
+    const minSide = Math.min(width, height);
+    const scale = Math.min(3.5, Math.max(1, 2200 / minSide));
+    if (scale > 1.05) {
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+      img = img.resize({ width, height, quality: 'best' });
+      ({ width, height } = img.getSize());
+    }
+
+    const bitmap = Buffer.from(img.toBitmap());
+    const n = width * height;
+    if (bitmap.length < n * 4) return input;
+
+    const hist = new Uint32Array(256);
+    const gray = new Uint8Array(n);
+    let sum = 0;
+    for (let i = 0, p = 0; i < n; i++, p += 4) {
+      // Electron toBitmap: BGRA
+      const g = Math.round(0.114 * bitmap[p] + 0.587 * bitmap[p + 1] + 0.299 * bitmap[p + 2]);
+      gray[i] = g;
+      hist[g] += 1;
+      sum += g;
+    }
+    const mean = sum / n;
+
+    const loCount = n * 0.02;
+    const hiCount = n * 0.98;
+    let acc = 0;
+    let lo = 0;
+    let hi = 255;
+    for (let v = 0; v < 256; v++) {
+      acc += hist[v];
+      if (acc >= loCount) { lo = v; break; }
+    }
+    acc = 0;
+    for (let v = 0; v < 256; v++) {
+      acc += hist[v];
+      if (acc >= hiCount) { hi = v; break; }
+    }
+    if (hi <= lo) { lo = 0; hi = 255; }
+    const range = hi - lo || 1;
+
+    const stretched = new Uint32Array(256);
+    for (let i = 0; i < n; i++) {
+      const g = Math.max(0, Math.min(255, Math.round(((gray[i] - lo) / range) * 255)));
+      gray[i] = g;
+      stretched[g] += 1;
+    }
+
+    const thr = otsuThreshold(stretched, n);
+    const binary = mean > 155;
+    for (let i = 0, p = 0; i < n; i++, p += 4) {
+      let g = gray[i];
+      if (binary) g = g > thr ? 255 : 0;
+      else g = Math.max(0, Math.min(255, Math.round((g - 128) * 1.45 + 128)));
+      bitmap[p] = bitmap[p + 1] = bitmap[p + 2] = g;
+      bitmap[p + 3] = 255;
+    }
+
+    const out = nativeImage.createFromBitmap(bitmap, { width, height });
+    if (out.isEmpty()) return input;
+    return out.toDataURL();
+  } catch (_) {
+    return input;
+  }
+}
+
+function invertDataUrl(dataUrl) {
+  try {
+    const img = nativeImage.createFromDataURL(dataUrl);
+    if (!img || img.isEmpty()) return dataUrl;
+    const { width, height } = img.getSize();
+    const bitmap = Buffer.from(img.toBitmap());
+    for (let p = 0; p < bitmap.length; p += 4) {
+      bitmap[p] = 255 - bitmap[p];
+      bitmap[p + 1] = 255 - bitmap[p + 1];
+      bitmap[p + 2] = 255 - bitmap[p + 2];
+    }
+    const out = nativeImage.createFromBitmap(bitmap, { width, height });
+    return out.isEmpty() ? dataUrl : out.toDataURL();
+  } catch (_) {
+    return dataUrl;
+  }
+}
+
+async function recognizeOnce(worker, image, psm) {
+  await worker.setParameters({
+    tessedit_pageseg_mode: psm,
+    preserve_interword_spaces: '1',
+    user_defined_dpi: '300',
+  });
+  const r = await worker.recognize(image);
+  return cleanupOcrText(r?.data?.text || '');
 }
 
 /**
@@ -204,27 +343,37 @@ async function recognize(imageDataUrl, onProgress, opts = {}) {
     onProgress?.({
       phase: 'ocr',
       status: 'recognizing',
-      message: quick ? '正在识别文字…' : '正在识别文字（多模式）…',
+      message: quick ? '正在预处理并识别…' : '正在预处理并多模式识别…',
     });
 
-    await worker.setParameters({
-      tessedit_pageseg_mode: PSM.AUTO,
-      preserve_interword_spaces: '1',
-      user_defined_dpi: '300',
-    });
-    const r1 = await worker.recognize(imageDataUrl);
-    const t1 = cleanupOcrText(r1?.data?.text || '');
-    if (quick) return { ok: true, text: t1 };
+    const prepared = preprocessForOcr(imageDataUrl);
+    const modes = quick
+      ? [PSM.AUTO]
+      : [PSM.AUTO, PSM.SINGLE_BLOCK, PSM.SPARSE_TEXT];
 
-    onProgress?.({ phase: 'ocr', status: 'recognizing', message: '正在二次校对…' });
-    await worker.setParameters({
-      tessedit_pageseg_mode: PSM.SPARSE_TEXT,
-      preserve_interword_spaces: '1',
-      user_defined_dpi: '300',
-    });
-    const r2 = await worker.recognize(imageDataUrl);
-    const t2 = cleanupOcrText(r2?.data?.text || '');
-    return { ok: true, text: pickBetterText(t1, t2) };
+    let best = '';
+    for (let i = 0; i < modes.length; i++) {
+      if (!quick && i > 0) {
+        onProgress?.({
+          phase: 'ocr',
+          status: 'recognizing',
+          message: i === 1 ? '正在块级校对…' : '正在稀疏文本校对…',
+        });
+      }
+      const text = await recognizeOnce(worker, prepared, modes[i]);
+      best = pickBetterText(best, text);
+    }
+
+    if (!quick && scoreOcrText(best) < 40) {
+      onProgress?.({ phase: 'ocr', status: 'recognizing', message: '尝试反色识别…' });
+      const inv = invertDataUrl(prepared);
+      if (inv && inv !== prepared) {
+        const text = await recognizeOnce(worker, inv, PSM.AUTO);
+        best = pickBetterText(best, text);
+      }
+    }
+
+    return { ok: true, text: best };
   } catch (err) {
     return { ok: false, error: err.message || String(err) };
   }
@@ -273,4 +422,6 @@ module.exports = {
   terminateWorker,
   scoreOcrText,
   pickBetterText,
+  preprocessForOcr,
+  otsuThreshold,
 };

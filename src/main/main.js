@@ -28,6 +28,7 @@ const exportTasks = require('./exportTasks');
 const mediaLayout = require('./mediaLayout');
 const ocr = require('./ocr');
 const plugins = require('./plugins');
+const { repairWindowsShortcuts } = require('./winShortcuts');
 const { normalizeMediaPayload } = require('../renderer/taskMedia');
 const taskDoc = require('../renderer/taskDoc');
 const { registerUpdateIpc } = require('./autoUpdate');
@@ -189,7 +190,14 @@ function resolveDocBody(fsStore, taskId, tagOpts, payload, existing = {}) {
 }
 
 function setupStoreHandlers() {
-  ipcHandle('tasks:getAll', () => fsStore.loadTasks());
+  ipcHandle('tasks:getAll', () => {
+    try { fsStore.flushPendingWrites(); } catch (_) { /* ignore */ }
+    return fsStore.loadTasks();
+  });
+  ipcHandle('tasks:get', (_e, id) => {
+    const list = fsStore.loadTasks();
+    return (list || []).find((t) => t && t.id === id) || null;
+  });
   ipcHandle('tasks:create', async (event, payload) => {
     try {
       const { attachments, tags: tagIds } = payload || {};
@@ -642,6 +650,7 @@ function setupSettingsHandlers() {
   });
 
   ipcHandle('backup:export', async () => {
+    try { fsStore.flushPendingWrites(); } catch (_) { /* ignore */ }
     const res = await dialog.showSaveDialog(win, {
       title: '导出备份',
       defaultPath: `任务看板备份_${new Date().toISOString().slice(0, 10)}.zip`,
@@ -716,6 +725,7 @@ function setupSettingsHandlers() {
 
   // 选择新目录（迁移并切换），返回结果
   ipcHandle('storage:change', async () => {
+    try { fsStore.flushPendingWrites(); } catch (_) { /* ignore */ }
     const res = await dialog.showOpenDialog(win, {
       title: '选择数据存储目录',
       properties: ['openDirectory', 'createDirectory'],
@@ -741,6 +751,7 @@ function setupSettingsHandlers() {
 
   // 重置为默认目录（迁移并切换）
   ipcHandle('storage:reset', () => {
+    try { fsStore.flushPendingWrites(); } catch (_) { /* ignore */ }
     const def = storage.defaultDir(APP_DATA_ROOT);
     const oldDir = APP_DATA;
     if (path.resolve(def) === path.resolve(oldDir)) return { ok: true, changed: false, path: def };
@@ -801,13 +812,25 @@ function setupOcrHandlers() {
     } catch (_) { /* ignore */ }
   });
   ipcHandle('ocr:status', () => ocr.langStatus());
-  ipcHandle('ocr:recognize', async (event, dataUrl) => {
+  ipcHandle('ocr:recognize', async (event, payload) => {
     const gate = plugins.assertOcrReady();
     if (!gate.ok) return gate;
     const onProgress = (p) => {
       try { event.sender.send('ocr:progress', p); } catch (_) { /* ignore */ }
     };
-    return ocr.recognize(dataUrl, onProgress);
+    let input = payload;
+    if (payload && typeof payload === 'object') {
+      if (payload.rel) {
+        const rel = String(payload.rel).replace(/^[/\\]+/, '');
+        if (!rel || rel.includes('..')) return { ok: false, error: '无效图片路径' };
+        input = path.join(APP_DATA, rel);
+      } else if (payload.dataUrl) {
+        input = payload.dataUrl;
+      } else {
+        return { ok: false, error: '无效图片' };
+      }
+    }
+    return ocr.recognize(input, onProgress);
   });
   ipcHandle('ocrIndex:getAll', () => plugins.ocrIndex.getAllTexts());
   ipcHandle('ocrIndex:set', (_e, rel, text) => plugins.ocrIndex.setText(rel, text));
@@ -855,6 +878,7 @@ function setupPluginHandlers() {
     return plugins.install(id, onProgress);
   });
   ipcHandle('plugins:uninstall', (_e, id) => plugins.uninstall(id));
+  ipcHandle('plugins:clipboardProbe', (_e, opts) => plugins.clipboardProbe(opts || {}));
   ipcHandle('plugins:clipboardPeek', (_e, opts) => plugins.clipboardPeek(opts || {}));
 }
 
@@ -911,7 +935,8 @@ if (!gotLock) {
 setupSingleInstanceGuard();
 app.whenReady().then(() => {
   fsStore = new FileStore(APP_DATA);
-  fsStore.migrateMediaLayout();
+  // 已分目录时几乎瞬时；仅旧平铺数据才全量搬迁（须在首屏读任务前完成）
+  try { fsStore.migrateMediaLayout(); } catch (_) { /* ignore */ }
   setupProtocol();
   createWindow();
   setupStoreHandlers();
@@ -920,6 +945,10 @@ app.whenReady().then(() => {
   setupWindowHandlers();
   setupOcrHandlers();
   setupPluginHandlers();
+  // 快捷方式修复延后，避免启动时写 .lnk 卡住壳层
+  setTimeout(() => {
+    try { repairWindowsShortcuts({ productName: '任务看板' }); } catch (_) { /* ignore */ }
+  }, 3000);
   // 注册 F12 切换 DevTools（removeMenu 后默认快捷键会失效，故用全局快捷键）
   globalShortcut.register('F12', () => { win.webContents.toggleDevTools(); });
   globalShortcut.register('Ctrl+Shift+I', () => { win.webContents.toggleDevTools(); });
@@ -935,7 +964,10 @@ function setupSingleInstanceGuard() {
   });
 }
 
-app.on('will-quit', () => { globalShortcut.unregisterAll(); });
+app.on('will-quit', () => {
+  try { if (fsStore) fsStore.flushPendingWrites(); } catch (_) { /* ignore */ }
+  globalShortcut.unregisterAll();
+});
 
 app.on('window-all-closed', () => { app.quit(); });
 }

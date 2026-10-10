@@ -479,6 +479,9 @@
   --status-stop: #ff3b30;
   --status-go-fg: #ffffff;
   --status-stop-fg: #ffffff;
+  /* 唯一水平外边距：列表左右、顶栏左右、创建区右侧、分页 全部用同一值 */
+  --chrome-pad-x: 12px;
+  --pane-gutter-x: var(--chrome-pad-x);
 }
 [data-skin="apple"] body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -548,6 +551,12 @@
   padding-top: 8px;
   padding-bottom: 8px;
 }
+/* 顶栏左右 = --chrome-pad-x，与列表卡片 / 创建区外边对齐（展开、收起同一套） */
+[data-skin="apple"] .toolbar-row,
+[data-skin="apple"] .toolbar-secondary {
+  padding-left: var(--chrome-pad-x);
+  padding-right: var(--chrome-pad-x);
+}
 [data-skin="apple"] #layout {
   --pane-inset-y: 12px;
   background: transparent;
@@ -557,7 +566,7 @@
   background: var(--apple-glass-strong);
   border: 0.5px solid var(--apple-stroke);
   border-left: 0.5px solid var(--apple-stroke);
-  margin: var(--pane-inset-y) 12px var(--pane-inset-y) 0;
+  margin: var(--pane-inset-y) var(--pane-gutter-x) var(--pane-inset-y) 0;
   border-radius: 22px;
   box-shadow:
     0 1px 0 var(--apple-highlight) inset,
@@ -573,7 +582,7 @@
   content: none;
 }
 [data-skin="apple"] #list {
-  --list-pad-x: 16px;
+  --list-pad-x: var(--chrome-pad-x);
   background: transparent;
   min-width: 0;
 }
@@ -1938,37 +1947,51 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+/* 次级：与皮肤通用按钮一致的灰底圆角，避免白底蓝字像链接 */
 [data-skin="apple"] .setting-actions button {
-  height: 28px !important;
-  min-height: 28px;
-  padding: 0 12px !important;
-  border-radius: 6px !important;
+  height: 32px !important;
+  min-height: 32px;
+  padding: 0 14px !important;
+  border-radius: 8px !important;
   font-size: 13px !important;
-  font-weight: 500 !important;
-  background: #ffffff !important;
-  color: var(--primary) !important;
-  border: 1px solid rgba(60, 60, 67, 0.18) !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em;
+  background: rgba(118, 118, 128, 0.12) !important;
+  color: #1d1d1f !important;
+  border: none !important;
   box-shadow: none !important;
 }
 [data-skin="apple"] .setting-actions button:hover {
-  background: rgba(var(--rgb), 0.06) !important;
-  border-color: rgba(var(--rgb), 0.35) !important;
-  color: var(--primary) !important;
+  background: rgba(118, 118, 128, 0.2) !important;
+  color: #1d1d1f !important;
+  border: none !important;
 }
 [data-skin="apple"] .setting-actions button.primary,
 [data-skin="apple"] .setting-actions #cleanupBtn,
+[data-skin="apple"] .setting-actions #backupImportBtn,
 [data-skin="apple"] .setting-actions button.danger {
   background: var(--primary) !important;
   color: #ffffff !important;
   border: none !important;
 }
+[data-skin="apple"] .setting-actions button.primary:hover,
+[data-skin="apple"] .setting-actions #cleanupBtn:hover,
+[data-skin="apple"] .setting-actions #backupImportBtn:hover {
+  background: #0066d6 !important;
+  color: #ffffff !important;
+}
 [data-skin="apple"] .setting-actions button.danger {
   background: #ff3b30 !important;
 }
-[data-skin="apple"] .setting-actions #storageResetBtn {
-  color: #8e8e93 !important;
-  border-color: rgba(60, 60, 67, 0.18) !important;
-  background: #ffffff !important;
+[data-skin="apple"] .setting-actions #storageResetBtn,
+[data-skin="apple"] .setting-actions #defResetBtn {
+  color: #636366 !important;
+  background: rgba(118, 118, 128, 0.08) !important;
+}
+[data-skin="apple"] .setting-actions #storageResetBtn:hover,
+[data-skin="apple"] .setting-actions #defResetBtn:hover {
+  color: #1d1d1f !important;
+  background: rgba(118, 118, 128, 0.16) !important;
 }
 [data-skin="apple"] .skin-options-wrap {
   --skin-fade: rgba(255, 255, 255, 0.96);
@@ -2699,15 +2722,21 @@ body {
   font-weight: 600;
 }
 #mediaFilterDropdown.range-dropdown {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   padding: 6px;
   min-width: 100%;
+}
+#mediaFilterDropdown.range-dropdown.hidden {
+  display: none;
 }
 #mediaFilterDropdown .media-filter-option {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 0;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 #searchWrap.search-wrap-inline {
   position: relative;
@@ -3140,19 +3169,37 @@ body {
   border-radius: 6px;
   word-break: break-all;
 }
-.setting-actions { display: flex; gap: 10px; }
+.setting-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .setting-actions button {
   padding: 6px 14px;
+  min-height: 32px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   border: 1px solid var(--border-strong);
-  background: var(--surface);
+  background: var(--surface-2, var(--surface));
   color: var(--text);
   font-size: 13px;
+  font-weight: 500;
   transition: all var(--transition);
+  box-sizing: border-box;
 }
-.setting-actions button:hover { border-color: var(--primary); color: var(--primary); }
-.setting-actions #storageResetBtn { color: var(--text-muted); }
+.setting-actions button:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+}
+.setting-actions button.primary {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--primary);
+}
+.setting-actions button.primary:hover {
+  background: var(--primary-hover, var(--primary));
+  color: var(--on-primary);
+  border-color: var(--primary-hover, var(--primary));
+}
+.setting-actions #storageResetBtn,
+.setting-actions #defResetBtn { color: var(--text-muted); }
 .setting-hint { font-size: 12px; color: var(--text-muted); margin: 0; }
 
 .update-notes {
@@ -3672,8 +3719,6 @@ body {
 }
 #list {
   --list-pad-x: 24px;
-  /* 经典滚动条占布局宽度；右内边距减去同宽，保证左右视觉边距一致 */
-  --list-scrollbar-w: 8px;
   position: relative;
   flex: 1 1 auto;
   /* 可读宽度由 layoutSplit 给创建区让路保证；此处允许极端窄窗继续收缩 */
@@ -3684,6 +3729,7 @@ body {
   background: var(--bg);
   overflow: hidden;
 }
+/* 列表左右等宽；勿再为滚动条加减单侧内边距 */
 .list-scroll {
   flex: 1 1 auto;
   min-width: 0;
@@ -3691,12 +3737,10 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 8px var(--list-pad-x) 0;
-  padding-right: max(0px, calc(var(--list-pad-x) - var(--list-scrollbar-w)));
   box-sizing: border-box;
 }
 [data-skin="apple"] .list-scroll {
   padding: var(--pane-inset-y, 12px) var(--list-pad-x) 0;
-  padding-right: max(0px, calc(var(--list-pad-x) - var(--list-scrollbar-w)));
 }
 .list-scroll::-webkit-scrollbar {
   width: 8px;
@@ -3772,6 +3816,7 @@ body.is-resizing-layout .layout-split {
 }
 #layout.is-create-motion #createPanel,
 #layout.is-create-motion #layoutSplit {
+  will-change: width, min-width, flex-basis, opacity;
   transition:
     width var(--create-motion),
     min-width var(--create-motion),

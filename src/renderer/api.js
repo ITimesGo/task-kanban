@@ -1,6 +1,6 @@
 // 薄封装，renderer 不直接依赖 window.taskAPI 细节
 window.API = {};
-for (const k of ['getAllTasks','createTask','toggleStatus','updateTask','deleteTask','pickImages','pickMedia','pasteImage','pasteImageSync','imageUrl','localFileUrl',
+for (const k of ['getAllTasks','getTask','createTask','toggleStatus','updateTask','deleteTask','pickImages','pickMedia','pasteImage','pasteImageSync','imageUrl','localFileUrl',
   'getAllTags','createTag','renameTag','deleteTag','countTagUsage','reorderTag','setTaskTags',
   'getStoragePath','openStoragePath','changeStoragePath','resetStoragePath','cleanupStorage',
   'setAlwaysOnTop','setTitleBarOverlay',
@@ -23,6 +23,7 @@ window.API.setPluginEnabled = (id, enabled) => window.taskAPI.setPluginEnabled(i
 window.API.installPlugin = (id) => window.taskAPI.installPlugin(id);
 window.API.uninstallPlugin = (id) => window.taskAPI.uninstallPlugin(id);
 window.API.onPluginProgress = (cb) => window.taskAPI.onPluginProgress(cb);
+window.API.clipboardProbe = (opts) => window.taskAPI.clipboardProbe(opts);
 window.API.clipboardPeek = (opts) => window.taskAPI.clipboardPeek(opts);
 window.API.ocrIndexGetAll = () => window.taskAPI.ocrIndexGetAll();
 window.API.ocrIndexSet = (rel, text) => window.taskAPI.ocrIndexSet(rel, text);

@@ -29,7 +29,7 @@ const VIEW_RANGE_OPTS = [
   { key: 'month', label: '本月' },
   { key: 'lastmonth', label: '上月' },
 ];
-const VIEW_PAGE_SIZE_OPTS = [50, 100, 200];
+const VIEW_PAGE_SIZE_OPTS = [20, 50, 100];
 
 const VIEW_CREATE_PANEL_OPTS = [
   { key: 'docked', label: '固定在右侧' },
@@ -59,6 +59,7 @@ function normalizeViewDefaults(raw) {
   if (VIEW_RANGE_OPTS.some((o) => o.key === raw.range)) base.range = raw.range;
   const ps = Number(raw.pageSize);
   if (VIEW_PAGE_SIZE_OPTS.includes(ps)) base.pageSize = ps;
+  else if (ps > 100) base.pageSize = 100; // 旧偏好 200 降到封顶
   if (typeof raw.filtersExpanded === 'boolean') base.filtersExpanded = raw.filtersExpanded;
   if (raw.createPanelMode === 'collapsed' || raw.createPanelMode === 'docked') {
     base.createPanelMode = raw.createPanelMode;

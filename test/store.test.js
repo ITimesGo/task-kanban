@@ -101,7 +101,9 @@ test('FileStore 保存后能读回，原子写无 .tmp 残留', () => {
   const fs2 = new FileStore(dir);
   const t = store2.createTask({ text: 'hi' });
   fs2.saveTasks([t]);
+  fs2.flushPendingWrites();
   assert.equal(fs2.loadTasks()[0].text, 'hi');
+  assert.ok(fs.existsSync(path.join(dir, 'tasks.json')));
   assert.ok(!fs.existsSync(path.join(dir, 'tasks.json.tmp')));
 });
 
@@ -129,6 +131,7 @@ test('FileStore loadTasks 命中内存缓存：删盘后仍能读到已加载数
   const fs2 = new FileStore(dir);
   const t = store2.createTask({ text: 'cached' });
   fs2.saveTasks([t]);
+  fs2.flushPendingWrites();
   assert.equal(fs2.loadTasks()[0].text, 'cached');
   fs.unlinkSync(path.join(dir, 'tasks.json'));
   assert.equal(fs2.loadTasks()[0].text, 'cached');
@@ -138,6 +141,7 @@ test('FileStore loadTags 命中内存缓存：删盘后仍能读到已加载数�
   const dir = tmpDir();
   const fs2 = new FileStore(dir);
   fs2.saveTags([{ id: 't1', name: '工作' }]);
+  fs2.flushPendingWrites();
   assert.equal(fs2.loadTags()[0].name, '工作');
   fs.unlinkSync(path.join(dir, 'tags.json'));
   assert.equal(fs2.loadTags()[0].name, '工作');
@@ -150,6 +154,7 @@ test('FileStore saveTasks 后缓存与磁盘一致，且不再依赖旧缓存对
   fs2.saveTasks([a]);
   const b = store2.createTask({ text: 'b' });
   fs2.saveTasks([b]);
+  fs2.flushPendingWrites();
   assert.equal(fs2.loadTasks().length, 1);
   assert.equal(fs2.loadTasks()[0].text, 'b');
   const fromDisk = JSON.parse(fs.readFileSync(path.join(dir, 'tasks.json'), 'utf8'));

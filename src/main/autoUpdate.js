@@ -16,7 +16,14 @@ function loadCancellationApi() {
   }
 }
 
-const { CancellationToken, CancellationError } = loadCancellationApi();
+let CancellationToken = null;
+let CancellationError = null;
+function ensureCancellationApi() {
+  if (CancellationToken) return;
+  const api = loadCancellationApi();
+  CancellationToken = api.CancellationToken;
+  CancellationError = api.CancellationError;
+}
 
 let autoUpdater = null;
 let configured = false;
@@ -129,8 +136,9 @@ function send(win, channel, payload) {
 }
 
 function isCancelError(err) {
+  ensureCancellationApi();
   if (!err) return false;
-  if (err instanceof CancellationError) return true;
+  if (CancellationError && err instanceof CancellationError) return true;
   const msg = String(err.message || err || '');
   return /cancel/i.test(msg);
 }
@@ -139,7 +147,7 @@ function isCancelError(err) {
  * @param {{ ipcHandle: Function, getWin: () => any }} opts
  */
 function registerUpdateIpc({ ipcHandle, getWin }) {
-  configure();
+  // 勿在启动时 configure()/require electron-updater，否则每次打开都卡几百毫秒
 
   ipcHandle('app:getVersion', () => app.getVersion());
 
@@ -163,6 +171,7 @@ function registerUpdateIpc({ ipcHandle, getWin }) {
       };
     }
     try {
+      configure();
       const updater = getAutoUpdater();
       const result = await updater.checkForUpdates();
       const info = result && result.updateInfo;
@@ -222,6 +231,8 @@ function registerUpdateIpc({ ipcHandle, getWin }) {
 
     downloading = true;
     const win = typeof getWin === 'function' ? getWin() : null;
+    configure();
+    ensureCancellationApi();
     const updater = getAutoUpdater();
     const token = new CancellationToken();
     downloadToken = token;

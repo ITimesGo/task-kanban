@@ -9,6 +9,9 @@ class FileStore {
   #tasks = null;
   #tags = null;
   #trash = null;
+  /** @type {Map<string, any>} */
+  #pendingWrites = new Map();
+  #writeTimer = null;
 
   constructor(appDataDir) {
     this.appDataDir = appDataDir;
@@ -79,16 +82,6 @@ class FileStore {
     }
   }
 
-  loadTags() {
-    if (this.#tags === null) this.#tags = this.#readJson(this.tagsFile, []);
-    return this.#tags;
-  }
-
-  saveTags(tags) {
-    this.#tags = tags;
-    this.#writeJson(this.tagsFile, tags);
-  }
-
   #readJson(file, fallback) {
     try {
       const data = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -102,8 +95,33 @@ class FileStore {
 
   #writeJson(file, data) {
     const tmp = file + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+    // 紧凑写入：任务多时 pretty-print 会明显拖慢保存
+    fs.writeFileSync(tmp, JSON.stringify(data));
     fs.renameSync(tmp, file); // 原子写
+  }
+
+  /** 合并短时间多次保存，避免大数据量时主进程被连续 writeFile 卡住 */
+  #scheduleWrite(file, data) {
+    this.#pendingWrites.set(file, data);
+    if (this.#writeTimer) return;
+    this.#writeTimer = setTimeout(() => {
+      this.#writeTimer = null;
+      this.flushPendingWrites();
+    }, 80);
+  }
+
+  /** 备份/换目录/退出前必须落盘 */
+  flushPendingWrites() {
+    if (this.#writeTimer) {
+      clearTimeout(this.#writeTimer);
+      this.#writeTimer = null;
+    }
+    if (!this.#pendingWrites.size) return;
+    const entries = [...this.#pendingWrites.entries()];
+    this.#pendingWrites.clear();
+    for (const [file, data] of entries) {
+      try { this.#writeJson(file, data); } catch (_) { /* ignore */ }
+    }
   }
 
   loadTasks() {
@@ -113,7 +131,7 @@ class FileStore {
 
   saveTasks(tasks) {
     this.#tasks = tasks;
-    this.#writeJson(this.tasksFile, tasks);
+    this.#scheduleWrite(this.tasksFile, tasks);
   }
 
   loadTrash() {
@@ -123,11 +141,22 @@ class FileStore {
 
   saveTrash(list) {
     this.#trash = list;
-    this.#writeJson(this.trashFile, list);
+    this.#scheduleWrite(this.trashFile, list);
+  }
+
+  loadTags() {
+    if (this.#tags === null) this.#tags = this.#readJson(this.tagsFile, []);
+    return this.#tags;
+  }
+
+  saveTags(tags) {
+    this.#tags = tags;
+    this.#scheduleWrite(this.tagsFile, tags);
   }
 
   /** 导入/外部改盘后强制从磁盘重载缓存 */
   reloadAll() {
+    this.flushPendingWrites();
     this.#tasks = null;
     this.#tags = null;
     this.#trash = null;
@@ -295,7 +324,29 @@ class FileStore {
     this.#rmEmptyDirs('videos');
   }
 
+  /** 根目录下已无散落媒体文件时，视为布局已迁移，启动可跳过全量扫描 */
+  #mediaLayoutLooksSettled() {
+    for (const kind of ['images', 'attachments', 'videos']) {
+      const root = path.join(this.appDataDir, kind);
+      if (!fs.existsSync(root)) continue;
+      let entries;
+      try { entries = fs.readdirSync(root); } catch (_) { continue; }
+      for (const name of entries) {
+        const abs = path.join(root, name);
+        try {
+          if (fs.statSync(abs).isFile()) return false;
+        } catch (_) { /* ignore */ }
+      }
+    }
+    return true;
+  }
+
   migrateMediaLayout() {
+    // 快路径：数据已按标签分目录时，勿每次启动扫全部任务/写盘
+    if (this.#mediaLayoutLooksSettled()) {
+      return { moved: 0, errors: [], skipped: true };
+    }
+
     const tagList = this.loadTags();
     let moved = 0;
     const errors = [];
@@ -307,9 +358,16 @@ class FileStore {
         || JSON.stringify(next.media || []) !== JSON.stringify(t.media || [])) moved++;
       return next;
     });
-    this.saveTasks(mapList(this.loadTasks()));
-    this.saveTrash(mapList(this.loadTrash()));
-    this.rmEmptyMediaDirs();
+    const nextTasks = mapList(this.loadTasks());
+    const nextTrash = mapList(this.loadTrash());
+    if (moved > 0) {
+      this.saveTasks(nextTasks);
+      this.saveTrash(nextTrash);
+      this.rmEmptyMediaDirs();
+    } else {
+      this.#tasks = nextTasks;
+      this.#trash = nextTrash;
+    }
     return { moved, errors };
   }
 

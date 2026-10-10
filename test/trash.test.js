@@ -67,6 +67,7 @@ test('FileStore trash 读写缓存', () => {
   const dir = tmpDir();
   const store = new FileStore(dir);
   store.saveTrash([{ ...sample('t1', 'x'), trashedAt: '2024-01-01T00:00:00.000Z' }]);
+  store.flushPendingWrites();
   assert.equal(store.loadTrash()[0].id, 't1');
   fs.unlinkSync(path.join(dir, 'trash.json'));
   assert.equal(store.loadTrash()[0].id, 't1'); // 缓存

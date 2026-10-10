@@ -65,20 +65,23 @@ function ensureCreatePanelOpen({ animate = true, focus = true } = {}) {
       animate,
     });
   }
-  if (focus) {
-    const delay = (!wasOpen && animate && !prefersReducedMotion())
-      ? Math.round(CREATE_PANEL_MOTION_MS * 0.35)
-      : 0;
-    window.setTimeout(() => {
-      const ed = document.querySelector('#createEditor .ProseMirror, #createEditor .rich-surface, #createEditor [contenteditable="true"]');
-      if (ed && typeof ed.focus === 'function') ed.focus();
-    }, delay);
-  }
+  if (focus) focusCreateEditorAfterMotion(!wasOpen && animate);
   return !wasOpen;
 }
 
 function prefersReducedMotion() {
   return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function focusCreateEditorAfterMotion(waitMotion) {
+  // 动画播完再聚焦，避免和宽度过渡抢主线程
+  const delay = waitMotion && !prefersReducedMotion()
+    ? CREATE_PANEL_MOTION_MS + 20
+    : 0;
+  window.setTimeout(() => {
+    const ed = document.querySelector('#createEditor .ProseMirror, #createEditor .rich-surface, #createEditor [contenteditable="true"]');
+    if (ed && typeof ed.focus === 'function') ed.focus();
+  }, delay);
 }
 
 function setFabVisible(fab, visible, { instant = false } = {}) {
@@ -131,6 +134,8 @@ function syncCreatePanelDom({ animate = true } = {}) {
   if (layout) {
     layout.classList.toggle('is-create-motion', doAnimate);
   }
+  // 同步到 <html>，供顶栏等 layout 外元素用 .is-create-collapsed 对齐边距
+  document.documentElement.classList.toggle('is-create-collapsed', willCollapse);
 
   if (showPanel) {
     if (panel) {
@@ -144,7 +149,7 @@ function syncCreatePanelDom({ animate = true } = {}) {
     } else if (window.__layoutSplit && typeof window.__layoutSplit.reapplyWidth === 'function') {
       window.__layoutSplit.reapplyWidth();
     }
-    // 展开：先以宽度 0 挂回布局，再下一帧去掉 collapsed，才能播宽度动画；列表随 flex 变宽
+    // 展开：先以宽度 0 挂回布局，再去掉 collapsed，才能播宽度动画；列表随 flex 联动变宽
     if (doAnimate && wasCollapsed && layout && panel) {
       layout.classList.add('is-create-collapsed');
       if (window.__layoutSplit && typeof window.__layoutSplit.setInteractive === 'function') {
@@ -240,10 +245,7 @@ function bindCreatePanelModeUi() {
         persist: false,
         animate: true,
       });
-      const ed = document.querySelector('#createEditor .ProseMirror, #createEditor .rich-surface, #createEditor [contenteditable="true"]');
-      if (ed && typeof ed.focus === 'function') {
-        window.setTimeout(() => ed.focus(), CREATE_PANEL_MOTION_MS * 0.35);
-      }
+      focusCreateEditorAfterMotion(true);
     });
   }
   if (collapseBtn) {
@@ -257,9 +259,42 @@ function bindCreatePanelModeUi() {
   }
 }
 
+/** 收起态预热创建区布局/编辑器，减轻第一次点加号时的编译与首绘卡顿 */
+function warmCreatePanelWhenCollapsed() {
+  if (isCreatePanelOpen()) return;
+  const panel = document.getElementById('createPanel');
+  if (!panel) return;
+  const wasHidden = panel.hidden;
+  const prev = {
+    visibility: panel.style.visibility,
+    position: panel.style.position,
+    pointerEvents: panel.style.pointerEvents,
+    left: panel.style.left,
+  };
+  panel.hidden = false;
+  panel.classList.remove('hidden');
+  panel.style.visibility = 'hidden';
+  panel.style.position = 'fixed';
+  panel.style.pointerEvents = 'none';
+  panel.style.left = '-10000px';
+  void panel.offsetWidth;
+  panel.style.visibility = prev.visibility;
+  panel.style.position = prev.position;
+  panel.style.pointerEvents = prev.pointerEvents;
+  panel.style.left = prev.left;
+  panel.hidden = wasHidden;
+  if (wasHidden) panel.classList.add('hidden');
+}
+
 function bootCreatePanelModeUi() {
   bindCreatePanelModeUi();
   syncCreatePanelDom({ animate: false });
+  const idle = typeof requestIdleCallback === 'function'
+    ? (fn) => requestIdleCallback(fn, { timeout: 1200 })
+    : (fn) => setTimeout(fn, 400);
+  idle(() => {
+    try { warmCreatePanelWhenCollapsed(); } catch (_) { /* ignore */ }
+  });
 }
 
 if (typeof document !== 'undefined') {

@@ -530,7 +530,9 @@ function renderEditDetail() {
     if (typeof sub === 'function') sub();
     cleanupEditTagMenu();
     window._editIsDirty = null;
-    const updated = (await API.getAllTasks()).find((x) => x.id === editing.id);
+    const updated = (typeof API.getTask === 'function'
+      ? await API.getTask(editing.id)
+      : (await API.getAllTasks()).find((x) => x.id === editing.id));
     const idx = tasks.findIndex((x) => x.id === editing.id);
     if (idx >= 0) tasks[idx] = updated;
     editing = updated;

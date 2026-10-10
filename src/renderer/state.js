@@ -3,7 +3,7 @@ let tasks = [];
 let filter = 'pending';
 let range = 'all';
 let page = 1;
-let pageSize = 50;
+let pageSize = 50; // 与 PAGE_SIZE_OPTIONS 对齐；过大时由 viewDefaults 封顶 100
 /** 待建任务媒体：{ kind:'image'|'video', value: dataUrl|{srcPath}|rel } */
 let newMedia = [];
 let newTags = [];

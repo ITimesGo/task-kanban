@@ -107,7 +107,11 @@ function nodeToHtml(node, opts) {
     if (!url && o.skipEmptyMedia) return '';
     const raw = docEsc(srcAttr || '');
     const sz = mediaWidthAttrs(node.attrs && node.attrs.width);
-    return `<figure class="doc-media doc-image" contenteditable="false" data-src="${raw}"${sz.attr}${sz.style}><img src="${docEsc(url)}" alt=""></figure>`;
+    // 列表预览懒加载，减轻启动/从后台恢复时批量解码压力
+    const lazy = (o.lazyMedia || o.mediaLimit != null)
+      ? ' loading="lazy" decoding="async"'
+      : '';
+    return `<figure class="doc-media doc-image" contenteditable="false" data-src="${raw}"${sz.attr}${sz.style}><img src="${docEsc(url)}" alt=""${lazy}></figure>`;
   }
   if (node.type === 'video') {
     const srcAttr = node.attrs && node.attrs.src;
@@ -134,8 +138,19 @@ function nodeToHtml(node, opts) {
 
 function docToHtml(doc, opts) {
   if (!isValidDoc(doc)) return '';
-  const o = Object.assign({ _mediaCount: 0 }, opts || {});
-  return (doc.content || []).map((n) => nodeToHtml(n, o)).join('');
+  const o = Object.assign({ _mediaCount: 0, _blockCount: 0 }, opts || {});
+  const blocks = doc.content || [];
+  if (o.blockLimit == null) {
+    return blocks.map((n) => nodeToHtml(n, o)).join('');
+  }
+  // 列表预览只要前几块：DOM 会被 max-height 裁切，全量序列化浪费
+  const parts = [];
+  for (let i = 0; i < blocks.length; i++) {
+    o._blockCount += 1;
+    if (o._blockCount > o.blockLimit) break;
+    parts.push(nodeToHtml(blocks[i], o));
+  }
+  return parts.join('');
 }
 
 function countDocMediaNodes(doc) {
@@ -150,20 +165,47 @@ function countDocMediaNodes(doc) {
   return n;
 }
 
+/** 任务未改时复用预览 HTML，筛选切换（待执行→全部）可直接命中 */
+const cardPreviewCache = new Map();
+const CARD_PREVIEW_CACHE_MAX = 400;
+
+function cardPreviewCacheKey(task) {
+  if (!task || task.id == null) return '';
+  const mediaLen = (task.images && task.images.length) || 0;
+  const videoLen = (task.videos && task.videos.length) || 0;
+  const attLen = (task.attachments && task.attachments.length) || 0;
+  const mediaOrd = task.media && task.media.length ? task.media.length : 0;
+  return `${task.id}\0${task.updatedAt || ''}\0${task.text || ''}\0${mediaLen}\0${videoLen}\0${attLen}\0${mediaOrd}\0${task.doc ? 1 : 0}`;
+}
+
 function cardDocPreviewHtml(task) {
+  const key = cardPreviewCacheKey(task);
+  if (key) {
+    const hit = cardPreviewCache.get(key);
+    if (hit != null) return hit;
+  }
   const doc = resolveTaskDoc(task);
   const totalMedia = countDocMediaNodes(doc);
   const html = docToHtml(doc, {
     mediaLimit: 4,
+    blockLimit: 6,
     skipEmptyMedia: true,
     linkAsSpan: true,
     videoPlaceholder: true,
+    lazyMedia: true,
   });
   const more = totalMedia > 4 ? `<span class="thumb-more">+${totalMedia - 4}</span>` : '';
-  if (!html.trim() && !more) {
-    return `<div class="doc-preview muted">（无文字）</div>`;
+  const out = (!html.trim() && !more)
+    ? `<div class="doc-preview muted">（无文字）</div>`
+    : `<div class="doc-preview">${html}${more}</div>`;
+  if (key) {
+    if (cardPreviewCache.size >= CARD_PREVIEW_CACHE_MAX) {
+      const first = cardPreviewCache.keys().next().value;
+      cardPreviewCache.delete(first);
+    }
+    cardPreviewCache.set(key, out);
   }
-  return `<div class="doc-preview">${html}${more}</div>`;
+  return out;
 }
 
 function detailDocHtml(task) {
