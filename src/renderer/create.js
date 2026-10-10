@@ -424,10 +424,15 @@ window.applyClipboardQuick = (payload) => {
   if (editOpen) {
     return window.applyClipboardToEdit(payload);
   }
+  // 收起为加号时：先展开新建区，再填入并聚焦
+  if (typeof window.ensureCreatePanelOpen === 'function') {
+    window.ensureCreatePanelOpen({ animate: true, focus: true });
+  }
   if (payload.type === 'text') {
     if (!createEditor || !createEditor.surface) return false;
     const chunk = String(payload.text || '');
     if (!chunk) return false;
+    // 立刻聚焦以便 insertText；面板展开动画结束后 ensureCreatePanelOpen 还会再聚焦一次
     createEditor.surface.focus();
     try { document.execCommand('insertText', false, chunk); }
     catch (_) {

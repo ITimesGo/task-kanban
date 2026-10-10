@@ -215,8 +215,8 @@ function imageSig(img) {
   return `img:${hash}:${w}x${h}`;
 }
 
-/** 预览用缩略图（JPEG），避免条上塞整图 PNG */
-function imageThumbDataUrl(img, maxEdge = 96) {
+/** 提示条用低清缩略图（约 48px JPEG），条上显示即可，勿塞原图 */
+function imageThumbDataUrl(img, maxEdge = 48) {
   const size = img.getSize();
   const w = Math.max(0, size.width || 0);
   const h = Math.max(0, size.height || 0);
@@ -227,11 +227,11 @@ function imageThumbDataUrl(img, maxEdge = 96) {
     out = img.resize({
       width: Math.max(1, Math.round(w * scale)),
       height: Math.max(1, Math.round(h * scale)),
-      quality: 'good',
+      quality: 'better',
     });
   }
   try {
-    const jpg = out.toJPEG(72);
+    const jpg = out.toJPEG(55);
     return `data:image/jpeg;base64,${jpg.toString('base64')}`;
   } catch (_) {
     const png = out.toPNG();

@@ -16,6 +16,8 @@
   let remainMs = 0;
   let paused = false; // 鼠标悬停
   let freezeHeld = false; // 已冻结截止时间（悬停或灯箱）
+  /** 取消过期的缩略图拉取（提示条已换/关掉） */
+  let thumbToken = 0;
 
   const bar = () => document.getElementById('clipQuickBar');
   const textEl = () => document.getElementById('clipQuickText');
@@ -121,15 +123,62 @@
   window.syncClipboardQuickTargetLabel = syncTargetLabel;
 
   function hideBar() {
+    thumbToken += 1;
     clearAutoHide();
     const el = bar();
     if (el) el.classList.add('hidden');
     pending = null;
     if (thumbEl()) {
-      thumbEl().hidden = true;
-      thumbEl().removeAttribute('src');
+      const th = thumbEl();
+      th.hidden = true;
+      th.removeAttribute('src');
+      th.classList.remove('is-loading');
     }
     syncTargetLabel();
+  }
+
+  function paintThumb(dataUrl, { loading = false } = {}) {
+    const thumb = thumbEl();
+    if (!thumb) return;
+    thumb.hidden = false;
+    thumb.title = '点击放大看原图';
+    thumb.setAttribute('role', 'button');
+    thumb.tabIndex = 0;
+    thumb.classList.toggle('is-loading', !!loading);
+    if (dataUrl) {
+      thumb.src = dataUrl;
+      thumb.classList.remove('is-loading');
+    } else {
+      thumb.removeAttribute('src');
+    }
+  }
+
+  /** 条先出来，空闲后再拉低清缩略图；点放大/填入再拉原图 */
+  function scheduleThumbForPending(sig) {
+    const token = ++thumbToken;
+    const run = async () => {
+      if (token !== thumbToken) return;
+      if (!pending || pending.type !== 'image' || pending.sig !== sig) return;
+      if (typeof API.clipboardPeek !== 'function') return;
+      try {
+        const thumb = await API.clipboardPeek({ withData: true, quality: 'thumb' });
+        if (token !== thumbToken) return;
+        if (!pending || pending.type !== 'image' || pending.sig !== sig) return;
+        if (!thumb || !thumb.ok || thumb.type !== 'image' || !thumb.dataUrl) return;
+        pending = {
+          ...pending,
+          dataUrl: thumb.dataUrl,
+          previewOnly: true,
+          sig: thumb.sig || sig,
+        };
+        paintThumb(thumb.dataUrl);
+      } catch (_) { /* ignore */ }
+    };
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(() => { run(); }, { timeout: 500 });
+    } else {
+      setTimeout(run, 48);
+    }
   }
 
   function showBar(payload) {
@@ -139,18 +188,19 @@
     const thumb = thumbEl();
     if (!el || !t) return;
     if (payload.type === 'image') {
-      if (thumb && payload.dataUrl) {
-        thumb.src = payload.dataUrl;
-        thumb.hidden = false;
-        thumb.title = '点击放大';
-        thumb.setAttribute('role', 'button');
-        thumb.tabIndex = 0;
+      if (payload.dataUrl) {
+        paintThumb(payload.dataUrl);
+      } else if (thumb) {
+        // 占位先出，避免「没图」；缩略图异步补上
+        paintThumb('', { loading: true });
+        scheduleThumbForPending(payload.sig);
       }
     } else {
       t.textContent = `剪贴板：${payload.preview || '新文字'}`;
       if (thumb) {
         thumb.hidden = true;
         thumb.removeAttribute('src');
+        thumb.classList.remove('is-loading');
       }
     }
     syncTargetLabel();
@@ -160,7 +210,7 @@
 
   /**
    * @param {{ resume?: boolean }} [opts]
-   * resume=true：从后台切回，只同步序号/基线，绝不 readImage、不弹条
+   * resume=true：从后台切回；仍用轻量 probe（不 readImage），但剪贴板有变化时要弹条
    */
   async function poll(opts = {}) {
     const resume = !!(opts && opts.resume);
@@ -184,7 +234,7 @@
       if (!res || !res.ok) return;
       if (res.seq != null) lastSeq = res.seq;
       if (res.unchanged) {
-        if (resume) primed = true;
+        if (!primed) primed = true;
         return;
       }
 
@@ -194,8 +244,8 @@
         return;
       }
 
-      // 启动基线 / 从后台恢复：只记住当前剪贴板，不弹提示
-      if (!primed || resume) {
+      // 仅启动第一次：记下当前剪贴板作基线，不弹（避免一打开就提示旧内容）
+      if (!primed) {
         lastSig = res.sig;
         primed = true;
         return;
@@ -205,7 +255,7 @@
       lastSig = res.sig;
 
       if (res.type === 'image') {
-        // 不在轮询里读图；提示条无缩略图，点填入时再拉原图
+        // 先弹条（不卡主线程）；缩略图空闲补画；点放大/填入再读原图
         showBar({
           type: 'image',
           sig: res.sig,
@@ -229,7 +279,7 @@
     }
   }
 
-  /** 填入/放大时才 readImage（用户主动操作，可接受短暂等待） */
+  /** 填入/放大：始终要原图（缩略图 previewOnly=true 不能直接用） */
   async function resolvePayloadForApply(payload) {
     if (!payload) return payload;
     if (payload.type === 'text') return payload;
@@ -333,7 +383,7 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     if (!enabled) return;
-    // 切回前台：只同步基线，禁止走弹条/读图路径
+    // 切回前台立刻轻量探测：有新内容则弹条（仍不 readImage）
     setTimeout(() => { if (enabled) poll({ resume: true }); }, 0);
   });
 

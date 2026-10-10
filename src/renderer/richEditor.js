@@ -116,6 +116,33 @@ function createRichEditor(host, options) {
     }
   }
 
+  const MEDIA_ZOOM_ICO = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.25" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.2 15.2L21 21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10.5 8v5M8 10.5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  const MEDIA_DEL_ICO = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
+  function ensureMediaActionButtons() {
+    surface.querySelectorAll('figure.doc-media').forEach((fig) => {
+      const isVideo = fig.classList.contains('doc-video') || fig.getAttribute('data-kind') === 'video';
+      if (!fig.querySelector(':scope > .doc-media-zoom')) {
+        const zoom = document.createElement('button');
+        zoom.type = 'button';
+        zoom.className = 'doc-media-zoom';
+        zoom.title = isVideo ? '预览视频' : '预览图片';
+        zoom.setAttribute('aria-label', zoom.title);
+        zoom.innerHTML = MEDIA_ZOOM_ICO;
+        fig.appendChild(zoom);
+      }
+      if (!fig.querySelector(':scope > .doc-media-del')) {
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'doc-media-del';
+        del.title = isVideo ? '删除视频' : '删除图片';
+        del.setAttribute('aria-label', del.title);
+        del.innerHTML = MEDIA_DEL_ICO;
+        fig.appendChild(del);
+      }
+    });
+  }
+
   function ensureMediaAttrs() {
     surface.querySelectorAll('figure.doc-media').forEach((fig) => {
       prepMediaFig(fig);
@@ -137,6 +164,7 @@ function createRichEditor(host, options) {
       fig.appendChild(el);
       prepMediaFig(fig);
     });
+    ensureMediaActionButtons();
     ensureCaretSinks();
   }
 
@@ -861,7 +889,6 @@ function createRichEditor(host, options) {
     chrome.className = 'doc-media-chrome';
     const isVideo = fig.classList.contains('doc-video') || fig.getAttribute('data-kind') === 'video';
     chrome.innerHTML =
-      `<button type="button" class="doc-media-del" title="${isVideo ? '删除视频' : '删除图片'}">×</button>` +
       '<span class="doc-resize nw" data-dir="nw"></span>' +
       '<span class="doc-resize ne" data-dir="ne"></span>' +
       '<span class="doc-resize sw" data-dir="sw"></span>' +
@@ -942,7 +969,7 @@ function createRichEditor(host, options) {
   });
   surface.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
-    if (e.target && e.target.closest && e.target.closest('.doc-resize, .doc-media-del')) return;
+    if (e.target && e.target.closest && e.target.closest('.doc-resize, .doc-media-del, .doc-media-zoom')) return;
     const fig = e.target && e.target.closest && e.target.closest('figure.doc-media');
     if (!fig || !surface.contains(fig)) return;
     selectMedia(fig);
@@ -965,6 +992,14 @@ function createRichEditor(host, options) {
     startResize(fig, handle.getAttribute('data-dir') || 'se', e);
   });
   surface.addEventListener('click', (e) => {
+    const zoom = e.target && e.target.closest && e.target.closest('.doc-media-zoom');
+    if (zoom) {
+      const fig = zoom.closest('figure.doc-media');
+      e.preventDefault();
+      e.stopPropagation();
+      if (fig && surface.contains(fig)) openMediaPreview(fig);
+      return;
+    }
     const del = e.target && e.target.closest && e.target.closest('.doc-media-del');
     if (del) {
       const fig = del.closest('figure.doc-media');
@@ -1001,6 +1036,28 @@ function createRichEditor(host, options) {
     }
     return { kind, rel: dataSrc.replace(/^\/+/, '').replace(/\\/g, '/') };
   }
+
+  function openMediaPreview(fig) {
+    if (!fig || typeof window.showLightbox !== 'function') return;
+    const resolved = resolveFromFig(fig);
+    const kind = resolved.kind === 'video' ? 'video' : 'image';
+    let src = '';
+    if (resolved.dataUrl) src = resolved.dataUrl;
+    else if (resolved.srcPath && typeof API !== 'undefined' && API.localFileUrl) {
+      src = API.localFileUrl(resolved.srcPath);
+    } else if (resolved.rel && typeof API !== 'undefined') {
+      src = typeof API.mediaSrc === 'function'
+        ? API.mediaSrc(resolved.rel, kind)
+        : (API.imageUrl ? API.imageUrl(resolved.rel) : '');
+    }
+    if (!src) {
+      const media = fig.querySelector('img, video');
+      src = (media && (media.currentSrc || media.getAttribute('src') || '')) || '';
+    }
+    if (!src || String(src).startsWith('pending:')) return;
+    window.showLightbox(src, { type: kind });
+  }
+
   surface.addEventListener('contextmenu', (e) => {
     const fig = e.target && e.target.closest && e.target.closest('figure.doc-media');
     if (!fig || !surface.contains(fig)) return;
