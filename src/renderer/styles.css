@@ -6908,13 +6908,14 @@ textarea:focus {
   * { transition: none !important; }
 }
 
-/* ---- 独立编辑窗 (?edit=) ---- */
+/* ---- 独立编辑窗 (?edit=)：铺满客户区，去掉内层弹窗边距/缩放把手 ---- */
 body.edit-window #toolbar,
 body.edit-window #layout,
 body.edit-window #createFab,
 body.edit-window #clipQuickBar {
   display: none !important;
 }
+body.edit-window #detailOverlay.overlay,
 body.edit-window #detailOverlay {
   display: flex !important;
   position: fixed;
@@ -6923,19 +6924,32 @@ body.edit-window #detailOverlay {
   background: var(--bg, #f5f5f5);
   align-items: stretch;
   justify-content: stretch;
-  padding: 0;
+  padding: 0 !important;
+  overflow: hidden;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 body.edit-window #detailOverlay.hidden {
   display: flex !important;
 }
-body.edit-window #detailModal.modal {
-  width: 100%;
-  max-width: none;
-  height: 100%;
-  max-height: none;
-  border-radius: 0;
-  box-shadow: none;
-  margin: 0;
+body.edit-window #detailModal.modal,
+[data-skin] body.edit-window #detailModal.modal {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  flex: 1 1 auto !important;
+  background: var(--surface, #fff);
+}
+/* 系统窗口已可缩放，隐藏弹窗内右下角缩放把手 */
+body.edit-window #detailModal .modal-resize {
+  display: none !important;
 }
 body.edit-window #detailClose {
   display: none !important;

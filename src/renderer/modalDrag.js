@@ -232,6 +232,8 @@
 
   function initModalChrome() {
     document.querySelectorAll('.overlay > .modal').forEach((modal) => {
+      // 独立编辑窗：内容铺满系统窗口，不再套一层拖拽/缩放
+      if (window.__IS_EDIT_WINDOW__ && modal.id === 'detailModal') return;
       enableModalDrag(modal);
       enableModalResize(modal);
     });
