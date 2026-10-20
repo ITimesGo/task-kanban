@@ -357,18 +357,19 @@ git commit -m "fix: parent file dialogs on invoking window"
 
 **Files:**
 - Create: `src/renderer/editWindow.js`
-- Modify: `src/renderer/index.html` (script tag)
+- Modify: `src/renderer/editWindowHelpers.js` (dual export → `window.EditWindowHelpers` when in browser)
+- Modify: `src/renderer/index.html` (script tags: helpers then editWindow, both before `app.js`)
 - Modify: `src/renderer/app.js`
 - Modify: `src/renderer/styles.css`
-- Modify: `src/renderer/detail.js` (expose save/dirty hooks; stay-in-edit save path for window mode)
+- Modify: `src/renderer/detail.js` (save stay-in-edit; edit-window chrome; no view/delete/toggle)
 
 - [ ] **Step 1: CSS — hide board in edit mode**
 
 ```css
 body.edit-window #layout,
 body.edit-window #fabCreate,
-body.edit-window .titlebar-extra /* keep drag region if needed */ {
-  /* hide non-edit chrome; keep titlebar overlay drag area usable */
+body.edit-window #clipboardQuick /* if present */ {
+  display: none !important;
 }
 body.edit-window #detailOverlay {
   display: flex !important;
@@ -376,14 +377,31 @@ body.edit-window #detailOverlay {
   inset: 0;
   /* full window; no dim click-away */
 }
-body.edit-window #detailOverlay.hidden {
-  display: flex !important; /* always shown in edit-window mode */
+body.edit-window #detailClose {
+  display: none; /* OS chrome closes the window; or map Close → window.close() */
 }
 ```
 
 Tune against real DOM ids in `index.html` (layout root, FAB, clipboard bar — hide clipboard quick bar in edit window for v1).
 
-- [ ] **Step 2: `editWindow.js` boot**
+- [ ] **Step 2: `index.html` scripts + helpers global**
+
+Add before `app.js`:
+
+```html
+<script src="editWindowHelpers.js"></script>
+<script src="editWindow.js"></script>
+```
+
+At bottom of `editWindowHelpers.js` (like `viewDefaults.js`):
+
+```js
+if (typeof window !== 'undefined') {
+  window.EditWindowHelpers = { parseEditTaskIdFromSearch, editWindowTitle, resolveDirtyCloseAction };
+}
+```
+
+- [ ] **Step 3: `editWindow.js` boot (must load tags + theme)**
 
 ```js
 (function bootEditWindow() {
@@ -398,27 +416,33 @@ Tune against real DOM ids in `index.html` (layout root, FAB, clipboard bar — h
   window.__EDIT_TASK_ID__ = id;
 
   (async () => {
+    if (typeof initTheme === 'function') initTheme();
+    if (typeof loadTags === 'function') await loadTags(); // required: renderEditDetail uses tagList
+
     const task = typeof API.getTask === 'function'
       ? await API.getTask(id)
       : (await API.getAllTasks()).find((t) => String(t.id) === String(id));
     if (!task) {
       alert('任务不存在');
-      // optional: API invoke window close
       return;
     }
     editing = task;
     detailState = { mode: 'edit', dataUrl: [] };
-    document.title = (helpers.editWindowTitle || ((t) => t))(task.text);
-    updateOpenDetail(); // renders edit via existing detail.js
+    document.title = (helpers.editWindowTitle || ((t) => '编辑 · ' + t))(task.text);
+    const overlay = document.getElementById('detailOverlay');
+    if (overlay) overlay.classList.remove('hidden');
+    updateOpenDetail(); // edit chrome via detail.js (see Step 4)
 
     window.__editWindowIsDirty = () => typeof window._editIsDirty === 'function' && !!window._editIsDirty();
     window.__editWindowSave = async () => {
-      // call extracted save from detail (Task 5 step 3); return boolean
+      if (typeof window.saveCurrentEdit === 'function') return !!(await window.saveCurrentEdit());
+      return false;
     };
 
     if (typeof API.onTasksChanged === 'function') {
       API.onTasksChanged(async () => {
         if (window.__editWindowIsDirty()) return;
+        if (typeof loadTags === 'function') await loadTags();
         const fresh = await API.getTask(id);
         if (!fresh) return;
         editing = fresh;
@@ -431,48 +455,57 @@ Tune against real DOM ids in `index.html` (layout root, FAB, clipboard bar — h
 })();
 ```
 
-Load helpers in browser: either inline script that assigns `window.EditWindowHelpers` from the same file with `typeof window !== 'undefined'` branch, or duplicate thin wrappers in `editWindow.js` that call the same logic (keep `editWindowHelpers.js` as source of truth with dual export like `viewDefaults.js`).
+- [ ] **Step 4: detail.js — edit-window-only chrome + save stay-in-edit**
 
-- [ ] **Step 3: detail.js — save stays in edit when `__IS_EDIT_WINDOW__`**
-
-In `#saveBtn` handler after successful update+tags:
+**Save:** Extract `async function saveCurrentEdit()` returning `boolean`. Wire `#saveBtn` and `window.saveCurrentEdit = saveCurrentEdit`. After success:
 
 ```js
 if (window.__IS_EDIT_WINDOW__) {
-  window._editIsDirty = null;
-  const updated = await API.getTask(editing.id);
-  editing = updated;
-  // remount or soft-reset dirty baseline without switching to view
-  detailState.mode = 'edit';
-  updateOpenDetail();
-  document.title = /* editWindowTitle */(updated.text);
-  return; // do not detailState.mode = 'view'
+  // clear dirty baseline, remount edit (stay in edit), update title
+  // do NOT set detailState.mode = 'view'; do NOT call board refresh()
+  return true;
 }
-// existing: mode view + refresh + updateOpenDetail
+// existing board path: mode view + refresh + updateOpenDetail
 ```
 
-Extract `async function saveCurrentEdit()` returning `boolean` used by both button and `__editWindowSave`.
+**Cancel / view chrome (spec §3.5 — no delete/toggle in edit window):**
 
-- [ ] **Step 4: `app.js` skip board work**
+When `window.__IS_EDIT_WINDOW__` inside `renderEditDetail` footer:
+
+- Hide or omit any path that switches to view mode.
+- Replace `#cancelEditBtn` behavior: do **not** `detailState.mode = 'view'`. Instead call `window.close()` (triggers main dirty-close intercept). Optionally relabel button to「关闭」.
+- Do **not** render view-mode footer (删除 / 标记完成) in the edit window at all — if something forces view, immediately bounce back to edit or close.
+
+When `window.__IS_EDIT_WINDOW__` inside `updateOpenDetail` view branch: should not run; if it does, re-enter edit or no-op.
+
+- [ ] **Step 5: `app.js` skip board-only work**
 
 ```js
 if (window.__IS_EDIT_WINDOW__) {
-  // editWindow.js owns boot; do not refresh board / silent update
+  // Theme + tags already started in editWindow.js; do NOT refresh board / silentCheckUpdate
 } else {
   initTheme();
-  // ...existing
+  if (typeof applySavedViewDefaults === 'function') {
+    applySavedViewDefaults({ refreshList: false, coldStart: true });
+  }
+  loadTags();
+  refresh();
+  if (typeof window.silentCheckUpdate === 'function') {
+    setTimeout(() => { window.silentCheckUpdate(); }, 5000);
+  }
 }
 ```
 
-Ensure `editWindow.js` runs after `API` / `detail.js` globals exist. Theme: still call `initTheme()` in edit window so skins apply.
+Note: `editWindow.js` must run **before** `app.js` so `__IS_EDIT_WINDOW__` is set synchronously from `location.search` before `app.js` executes (set the flag at the top of `editWindow.js` before the async IIFE).
 
-- [ ] **Step 5: Manual test**
+- [ ] **Step 6: Manual test**
 
-1. From main DevTools after Task 3 API: `API.openEditWindow('<real-id>')`
-2. Window opens in edit UI; board hidden.
-3. Edit text, save, stay in edit; close with dirty → 3 buttons.
+1. From main DevTools: `API.openEditWindow('<real-id>')`
+2. Window opens in edit UI; board hidden; tag picker populated; theme applied.
+3. No 删除 / 标记完成; 取消/关闭 → dirty dialog or close.
+4. Save stays in edit; dirty close → 三选一.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/renderer/editWindow.js src/renderer/editWindowHelpers.js src/renderer/detail.js src/renderer/app.js src/renderer/styles.css src/renderer/index.html
