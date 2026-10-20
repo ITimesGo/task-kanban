@@ -154,13 +154,50 @@ function updateOpenDetail() {
 function syncDetailPopoutBtn() {
   const btn = document.getElementById('openEditWinBtn');
   if (!btn) return;
-  // 仅详情只读态显示；就地编辑 / 独立编辑窗内隐藏
+  // 详情只读/就地编辑均可显示；独立编辑窗内隐藏
   const show = !window.__IS_EDIT_WINDOW__
-    && detailState
-    && detailState.mode === 'view'
     && editing
     && editing.id != null;
   btn.hidden = !show;
+}
+
+/**
+ * 从详情打开独立编辑窗。
+ * 若正就地编辑且有未保存改动：保存后打开 / 不保存打开 / 取消。
+ */
+async function openIndependentEditFromDetail(btn) {
+  if (!editing || editing.id == null) return;
+  const taskId = editing.id;
+
+  if (detailState && detailState.mode === 'edit' && isEditDirty()) {
+    let choice = 'cancel';
+    if (typeof API.dirtyOpenEditChoice === 'function') {
+      choice = await API.dirtyOpenEditChoice({
+        message: '有未保存的修改',
+        detail: '独立窗口会加载已保存的内容。可先保存草稿再打开，或不保存直接打开。',
+      });
+    } else {
+      const ok = await showConfirm('有未保存的修改，打开独立窗口将丢失这些修改。确定继续？');
+      choice = ok ? 'discard' : 'cancel';
+    }
+    if (choice === 'cancel') return;
+    if (choice === 'save') {
+      if (typeof window.saveCurrentEdit !== 'function') return;
+      const ok = await window.saveCurrentEdit();
+      if (!ok) return;
+      // 保存后详情回到只读（saveCurrentEdit 在非独立窗路径会切 view）
+    } else if (choice === 'discard') {
+      window._editIsDirty = null;
+      detailState.mode = 'view';
+      updateOpenDetail();
+    }
+  }
+
+  if (typeof API.openEditWindowFromButton === 'function') {
+    await API.openEditWindowFromButton(btn, taskId);
+  } else if (typeof API.openEditWindow === 'function') {
+    await API.openEditWindow(taskId);
+  }
 }
 
 function renderEditDetail() {
@@ -639,13 +676,7 @@ $('#detailClose').addEventListener('click', () => {
 const openEditWinBtnEl = document.getElementById('openEditWinBtn');
 if (openEditWinBtnEl) {
   openEditWinBtnEl.addEventListener('click', (e) => {
-    const btn = e.currentTarget;
-    if (!editing || editing.id == null) return;
-    if (typeof API.openEditWindowFromButton === 'function') {
-      API.openEditWindowFromButton(btn, editing.id);
-    } else if (typeof API.openEditWindow === 'function') {
-      API.openEditWindow(editing.id);
-    }
+    openIndependentEditFromDetail(e.currentTarget);
   });
 }
 

@@ -959,6 +959,19 @@ function setupWindowHandlers() {
       return { ok: false, error: err.message };
     }
   });
+  // 详情就地编辑未保存时，开独立窗前的三选一
+  ipcHandle('dialog:dirtyOpenEdit', async (event, opts = {}) => {
+    const bw = dialogParent(event);
+    const { response } = await dialog.showMessageBox(bw || undefined, {
+      type: 'question',
+      buttons: ['保存后打开', '不保存打开', '取消'],
+      defaultId: 0,
+      cancelId: 2,
+      message: opts.message || '有未保存的修改',
+      detail: opts.detail || '独立窗口将打开磁盘上的任务内容；请先保存草稿，或丢弃后打开。',
+    });
+    return response === 0 ? 'save' : response === 1 ? 'discard' : 'cancel';
+  });
   ipcHandle('window:openEdit', async (_e, taskId) => {
     const id = String(taskId || '').trim();
     if (!id) return { ok: false, error: '缺少任务 id' };

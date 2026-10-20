@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('taskAPI', {
   setAlwaysOnTop: (flag) => ipcRenderer.invoke('window:setAlwaysOnTop', flag),
   setTitleBarOverlay: (opts) => ipcRenderer.invoke('window:setTitleBarOverlay', opts),
   openEditWindow: (taskId) => ipcRenderer.invoke('window:openEdit', taskId),
+  dirtyOpenEditChoice: (opts) => ipcRenderer.invoke('dialog:dirtyOpenEdit', opts),
   pickAttachments: () => ipcRenderer.invoke('file:pick'),
   openAttachment: (rel) => ipcRenderer.invoke('file:open', rel),
   allowMediaSrcPath: (absPath) => ipcRenderer.invoke('media:allowSrcPath', absPath),
