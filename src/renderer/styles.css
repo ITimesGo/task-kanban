@@ -7012,9 +7012,11 @@ body.edit-window #editDrop .edit-side {
   background: color-mix(in srgb, var(--primary) 12%, var(--surface, #fff));
 }
 .card-action-editwin.is-loading,
+.card:hover .card-action-editwin.is-loading,
+.card:focus-within .card-action-editwin.is-loading,
 #openEditWinBtn.icon-btn.is-loading {
   pointer-events: none;
-  opacity: 1;
+  opacity: 1 !important;
   color: var(--primary);
   border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
 }
