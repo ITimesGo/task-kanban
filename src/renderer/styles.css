@@ -7011,6 +7011,20 @@ body.edit-window #editDrop .edit-side {
   color: var(--primary);
   background: color-mix(in srgb, var(--primary) 12%, var(--surface, #fff));
 }
+.card-action-editwin.is-loading,
+#openEditWinBtn.icon-btn.is-loading {
+  pointer-events: none;
+  opacity: 1;
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.editwin-spin-ico {
+  display: block;
+  animation: editwin-spin 0.7s linear infinite;
+}
+@keyframes editwin-spin {
+  to { transform: rotate(360deg); }
+}
 #openEditWinBtn.icon-btn {
   display: inline-flex;
   align-items: center;

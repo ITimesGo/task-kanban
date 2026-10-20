@@ -140,8 +140,14 @@ function updateOpenDetail() {
         <button id="editBtn" class="primary" type="button">编辑</button>
       </div>`;
     document.getElementById('toggleBtn').addEventListener('click', () => toggleStatus(editing));
-    document.getElementById('openEditWinBtn').addEventListener('click', () => {
-      if (editing && typeof API.openEditWindow === 'function') API.openEditWindow(editing.id);
+    document.getElementById('openEditWinBtn').addEventListener('click', (e) => {
+      const btn = e.currentTarget;
+      if (!editing) return;
+      if (typeof API.openEditWindowFromButton === 'function') {
+        API.openEditWindowFromButton(btn, editing.id);
+      } else if (typeof API.openEditWindow === 'function') {
+        API.openEditWindow(editing.id);
+      }
     });
     document.getElementById('editBtn').addEventListener('click', () => {
       detailState.mode = 'edit';

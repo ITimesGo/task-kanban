@@ -15,7 +15,41 @@ window.API.onUpdateDownloadProgress = (cb) => window.taskAPI.onUpdateDownloadPro
 window.API.onStorageChanged = (cb) => window.taskAPI.onStorageChanged(cb);
 window.API.onTasksChanged = (cb) => window.taskAPI.onTasksChanged(cb);
 window.API.openEditWindow = (taskId) => window.taskAPI.openEditWindow(taskId);
-window.API.onEditActivate = (cb) => window.taskAPI.onEditActivate(cb);
+
+/** 入口 icon 转 loading，直到独立编辑窗显示（或失败） */
+window.API.openEditWindowFromButton = async (btn, taskId) => {
+  if (taskId == null || typeof window.taskAPI.openEditWindow !== 'function') return;
+  if (btn && btn.dataset && btn.dataset.loading === '1') return;
+  const spin = '<svg class="editwin-spin-ico" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="22 12"/></svg>';
+  const prevHtml = btn ? btn.innerHTML : '';
+  const prevTitle = btn ? btn.getAttribute('title') : '';
+  if (btn) {
+    btn.dataset.loading = '1';
+    btn.classList.add('is-loading');
+    btn.setAttribute('aria-busy', 'true');
+    btn.setAttribute('title', '正在打开编辑窗口…');
+    btn.setAttribute('aria-label', '正在打开编辑窗口…');
+    if (btn.classList.contains('card-action')) {
+      btn.innerHTML = `<span class="card-action-ico" aria-hidden="true">${spin}</span>`;
+    } else {
+      btn.innerHTML = spin;
+    }
+  }
+  try {
+    return await window.taskAPI.openEditWindow(taskId);
+  } finally {
+    if (btn && btn.isConnected) {
+      btn.dataset.loading = '';
+      btn.classList.remove('is-loading');
+      btn.removeAttribute('aria-busy');
+      btn.innerHTML = prevHtml;
+      if (prevTitle != null) {
+        btn.setAttribute('title', prevTitle);
+        btn.setAttribute('aria-label', prevTitle);
+      }
+    }
+  }
+};
 window.API.getTaskSync = (id) => {
   try {
     return typeof window.taskAPI.getTaskSync === 'function'

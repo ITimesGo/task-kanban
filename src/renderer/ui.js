@@ -334,7 +334,11 @@ const ui = (() => {
         const card = openEdit.closest('.card');
         const id = card && card.dataset.taskId;
         const t = id != null ? h.taskById.get(String(id)) : null;
-        if (t && typeof API.openEditWindow === 'function') API.openEditWindow(t.id);
+        if (t && typeof API.openEditWindowFromButton === 'function') {
+          API.openEditWindowFromButton(openEdit, t.id);
+        } else if (t && typeof API.openEditWindow === 'function') {
+          API.openEditWindow(t.id);
+        }
         return;
       }
       const toggle = e.target.closest && e.target.closest('[data-action="toggle"]');

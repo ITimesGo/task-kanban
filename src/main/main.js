@@ -43,10 +43,6 @@ let win = null;
 let fsStore = null;
 /** @type {Map<string, Electron.BrowserWindow>} */
 const editWins = new Map();
-/** 预热的隐藏编辑窗（已加载 index.html，点击时只注入任务再显示） */
-let editWarm = null;
-const WARM_EDIT_ID = '__warm__';
-let editWarmTimer = null;
 
 function dialogParent(event) {
   try {
@@ -74,8 +70,10 @@ function loadTaskById(taskId) {
   }
 }
 
-function newEditBrowserWindow() {
-  return new BrowserWindow({
+/** @returns {{ bw: Electron.BrowserWindow, whenShown: Promise<void> }} */
+function createEditWindow(taskId) {
+  const id = String(taskId);
+  const bw = new BrowserWindow({
     width: 720,
     height: 640,
     minWidth: 480,
@@ -98,18 +96,35 @@ function newEditBrowserWindow() {
       backgroundThrottling: false,
     },
   });
-}
-
-function attachEditWindowCloseHandlers(bw) {
   bw._allowClose = false;
   bw._closing = false;
+  bw._editTaskId = id;
+  bw._editPrimeTask = loadTaskById(id);
+  bw.loadFile(path.join(__dirname, '../renderer/index.html'), { query: { edit: id } });
+
+  let shown = false;
+  let resolveShown;
+  const whenShown = new Promise((resolve) => { resolveShown = resolve; });
+  const showBw = () => {
+    if (shown || bw.isDestroyed()) {
+      if (resolveShown) { resolveShown(); resolveShown = null; }
+      return;
+    }
+    shown = true;
+    bw.show();
+    bw.focus();
+    if (resolveShown) { resolveShown(); resolveShown = null; }
+  };
+  bw.webContents.once('dom-ready', showBw);
+  bw.once('ready-to-show', showBw);
+  setTimeout(showBw, 4000);
+  bw.removeMenu();
   bw.on('closed', () => {
-    const tid = bw._editTaskId;
-    if (tid && editWins.get(tid) === bw) editWins.delete(tid);
-    if (editWarm === bw) editWarm = null;
+    if (editWins.get(id) === bw) editWins.delete(id);
+    if (resolveShown) { resolveShown(); resolveShown = null; }
   });
   bw.on('close', (e) => {
-    if (bw._isWarm || bw._allowClose || bw.isDestroyed()) return;
+    if (bw._allowClose || bw.isDestroyed()) return;
     e.preventDefault();
     if (bw._closing) return;
     bw._closing = true;
@@ -152,82 +167,7 @@ function attachEditWindowCloseHandlers(bw) {
       bw.close();
     })().catch(() => { bw._closing = false; });
   });
-}
-
-function scheduleEditWarm() {
-  if (editWarmTimer) clearTimeout(editWarmTimer);
-  editWarmTimer = setTimeout(() => {
-    editWarmTimer = null;
-    ensureEditWarm();
-  }, 400);
-}
-
-function ensureEditWarm() {
-  if (editWarm && !editWarm.isDestroyed()) return editWarm;
-  if (!app.isReady()) return null;
-  const bw = newEditBrowserWindow();
-  bw._isWarm = true;
-  bw._editTaskId = null;
-  bw._editPrimeTask = null;
-  bw._warmReady = false;
-  attachEditWindowCloseHandlers(bw);
-  bw.removeMenu();
-  bw.webContents.once('did-finish-load', () => {
-    if (!bw.isDestroyed()) bw._warmReady = true;
-  });
-  bw.loadFile(path.join(__dirname, '../renderer/index.html'), { query: { edit: WARM_EDIT_ID } });
-  editWarm = bw;
-  return bw;
-}
-
-/** 优先取预热窗：不重新 loadFile，只注入任务并显示 */
-function activateWarmEditWindow(taskId, task) {
-  const bw = editWarm;
-  if (!bw || bw.isDestroyed() || !bw._warmReady || bw._isWarm !== true) return null;
-  editWarm = null;
-  bw._isWarm = false;
-  bw._editTaskId = String(taskId);
-  bw._editPrimeTask = task;
-  bw._allowClose = false;
-  bw._closing = false;
-  editWins.set(String(taskId), bw);
-  try {
-    bw.webContents.send('edit:activate', task);
-  } catch (_) {
-    /* fall through — 仍尝试显示 */
-  }
-  if (bw.isMinimized()) bw.restore();
-  bw.show();
-  bw.focus();
-  scheduleEditWarm();
-  return bw;
-}
-
-function createEditWindow(taskId) {
-  const id = String(taskId);
-  const task = loadTaskById(id);
-  const warm = activateWarmEditWindow(id, task);
-  if (warm) return warm;
-
-  const bw = newEditBrowserWindow();
-  bw._isWarm = false;
-  bw._editTaskId = id;
-  bw._editPrimeTask = task;
-  attachEditWindowCloseHandlers(bw);
-  bw.loadFile(path.join(__dirname, '../renderer/index.html'), { query: { edit: id } });
-  let shown = false;
-  const showBw = () => {
-    if (shown || bw.isDestroyed()) return;
-    shown = true;
-    bw.show();
-    bw.focus();
-  };
-  bw.webContents.once('dom-ready', showBw);
-  bw.once('ready-to-show', showBw);
-  setTimeout(showBw, 2500);
-  bw.removeMenu();
-  scheduleEditWarm();
-  return bw;
+  return { bw, whenShown };
 }
 
 // stream + supportFetchAPI：HTML5 <video> 需要 Range / 流式读取；secure 便于 media-src
@@ -1019,7 +959,7 @@ function setupWindowHandlers() {
       return { ok: false, error: err.message };
     }
   });
-  ipcHandle('window:openEdit', (_e, taskId) => {
+  ipcHandle('window:openEdit', async (_e, taskId) => {
     const id = String(taskId || '').trim();
     if (!id) return { ok: false, error: '缺少任务 id' };
     const existing = editWins.get(id);
@@ -1028,8 +968,10 @@ function setupWindowHandlers() {
       existing.focus();
       return { ok: true, focused: true };
     }
-    const bw = createEditWindow(id);
+    const { bw, whenShown } = createEditWindow(id);
     editWins.set(id, bw);
+    // 等窗体真正显示后再返回，便于入口 icon 保持 loading
+    await whenShown;
     return { ok: true, focused: false };
   });
 }
@@ -1174,8 +1116,6 @@ app.whenReady().then(() => {
   setupWindowHandlers();
   setupOcrHandlers();
   setupPluginHandlers();
-  // 空闲预热一个隐藏编辑窗，首次点「独立编辑」不必冷启整页
-  setTimeout(() => { try { ensureEditWarm(); } catch (_) { /* ignore */ } }, 1500);
   // 快捷方式修复延后，避免启动时写 .lnk 卡住壳层
   setTimeout(() => {
     try { repairWindowsShortcuts({ productName: '任务看板' }); } catch (_) { /* ignore */ }
