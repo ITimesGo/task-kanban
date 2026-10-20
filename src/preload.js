@@ -29,6 +29,11 @@ contextBridge.exposeInMainWorld('taskAPI', {
   changeStoragePath: () => ipcRenderer.invoke('storage:change'),
   resetStoragePath: () => ipcRenderer.invoke('storage:reset'),
   onStorageChanged: (cb) => { ipcRenderer.on('storage:changed', cb); },
+  onTasksChanged: (cb) => {
+    const handler = () => cb();
+    ipcRenderer.on('tasks:changed', handler);
+    return () => { ipcRenderer.removeListener('tasks:changed', handler); };
+  },
   onClosePopups: (cb) => {
     const handler = () => cb();
     ipcRenderer.on('ui:close-popups', handler);
@@ -36,6 +41,7 @@ contextBridge.exposeInMainWorld('taskAPI', {
   },
   setAlwaysOnTop: (flag) => ipcRenderer.invoke('window:setAlwaysOnTop', flag),
   setTitleBarOverlay: (opts) => ipcRenderer.invoke('window:setTitleBarOverlay', opts),
+  openEditWindow: (taskId) => ipcRenderer.invoke('window:openEdit', taskId),
   pickAttachments: () => ipcRenderer.invoke('file:pick'),
   openAttachment: (rel) => ipcRenderer.invoke('file:open', rel),
   allowMediaSrcPath: (absPath) => ipcRenderer.invoke('media:allowSrcPath', absPath),

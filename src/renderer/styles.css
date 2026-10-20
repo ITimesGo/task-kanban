@@ -6851,3 +6851,68 @@ textarea:focus {
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* ---- 独立编辑窗 (?edit=) ---- */
+body.edit-window #toolbar,
+body.edit-window #layout,
+body.edit-window #createFab,
+body.edit-window #clipQuickBar {
+  display: none !important;
+}
+body.edit-window #detailOverlay {
+  display: flex !important;
+  position: fixed;
+  inset: 40px 0 0 0;
+  z-index: 20;
+  background: var(--bg, #f5f5f5);
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+}
+body.edit-window #detailOverlay.hidden {
+  display: flex !important;
+}
+body.edit-window #detailModal.modal {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+}
+body.edit-window #detailClose {
+  display: none !important;
+}
+body.edit-window .titlebar-pin,
+body.edit-window #pinBtn {
+  display: none !important;
+}
+
+/* 卡片：独立编辑入口（toggle 左侧） */
+.card {
+  padding-right: calc(var(--card-ctrl-inset) + var(--card-ctrl-w) * 2 + 14px);
+}
+.card-action-editwin {
+  right: calc(var(--card-ctrl-inset) + var(--card-ctrl-w) + 6px);
+  border-color: color-mix(in srgb, var(--text-muted, #909399) 45%, var(--border));
+  background: color-mix(in srgb, var(--surface, #fff) 92%, var(--text-muted, #909399));
+  color: var(--text-muted, #606266);
+}
+.card-action-editwin:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.card:hover .card-action-editwin,
+.card:focus-within .card-action-editwin {
+  opacity: 1;
+  pointer-events: auto;
+}
+#openEditWinBtn.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}

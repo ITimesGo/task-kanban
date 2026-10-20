@@ -72,6 +72,10 @@ async function confirmLeaveEditIfDirty() {
 }
 
 async function closeDetailModal() {
+  if (window.__IS_EDIT_WINDOW__) {
+    try { window.close(); } catch (_) { /* ignore */ }
+    return;
+  }
   if (!(await confirmLeaveEditIfDirty())) return;
   $('#detailOverlay').classList.add('hidden');
   disposeEditEditor();
@@ -96,7 +100,26 @@ function disposeEditEditor() {
   }
 }
 
+const EDIT_WIN_ICO = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4.5" width="8" height="8" rx="1.2"/><path d="M6.5 2.5h7v7"/><path d="M9.5 6.5l4-4"/></svg>';
+
+function setEditWindowChromeTitle(text) {
+  const helpers = window.EditWindowHelpers;
+  const title = helpers && helpers.editWindowTitle
+    ? helpers.editWindowTitle(text)
+    : (`编辑 · ${String(text || '').slice(0, 24)}`);
+  document.title = title;
+  const titleEl = document.getElementById('titlebar-title');
+  if (titleEl) titleEl.textContent = title;
+}
+
 function updateOpenDetail() {
+  if (window.__IS_EDIT_WINDOW__) {
+    // 独立编辑窗：始终编辑态，不进只读（避免露出删除/完成）
+    detailState.mode = 'edit';
+    disposeEditEditor();
+    renderEditDetail();
+    return;
+  }
   if (detailState.mode === 'edit') {
     disposeEditEditor();
     renderEditDetail();
@@ -113,9 +136,13 @@ function updateOpenDetail() {
         <button id="toggleBtn" type="button">${done ? '取消完成' : '标记完成'}</button>
       </div>
       <div class="detail-footer-right">
+        <button id="openEditWinBtn" class="icon-btn" type="button" title="独立窗口编辑" aria-label="独立窗口编辑">${EDIT_WIN_ICO}</button>
         <button id="editBtn" class="primary" type="button">编辑</button>
       </div>`;
     document.getElementById('toggleBtn').addEventListener('click', () => toggleStatus(editing));
+    document.getElementById('openEditWinBtn').addEventListener('click', () => {
+      if (editing && typeof API.openEditWindow === 'function') API.openEditWindow(editing.id);
+    });
     document.getElementById('editBtn').addEventListener('click', () => {
       detailState.mode = 'edit';
       detailState.dataUrl = [];
@@ -485,13 +512,14 @@ function renderEditDetail() {
     }
   });
 
+  const cancelLabel = window.__IS_EDIT_WINDOW__ ? '关闭' : '取消';
   ui.detailActions.innerHTML = `
     <div class="detail-footer-left">
       <button id="editAddFile" class="icon-btn" type="button" title="添加附件" aria-label="添加附件"><svg class="att-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
     </div>
     <span class="detail-footer-spacer"></span>
     <div class="detail-footer-right">
-      <button id="cancelEditBtn" type="button">取消</button>
+      <button id="cancelEditBtn" type="button">${cancelLabel}</button>
       <button id="saveBtn" class="primary" type="button">保存</button>
     </div>`;
   document.getElementById('editAddFile').addEventListener('click', async () => {
@@ -502,7 +530,9 @@ function renderEditDetail() {
     });
     drawEditAttachments();
   });
-  document.getElementById('saveBtn').addEventListener('click', async () => {
+
+  async function saveCurrentEdit() {
+    if (!editEditor || typeof editEditor.getPayload !== 'function') return false;
     const body = await editEditor.getPayload();
     const editAtts = editAttachments.map((a) => {
       const isRel = (editing.attachments || []).some((x) => (typeof x === 'string' ? x : x.rel) === a);
@@ -510,7 +540,7 @@ function renderEditDetail() {
     });
     if (isTaskContentEmpty({ doc: body.doc, attachments: editAtts })) {
       alert('请至少输入文字、图片、视频或附件');
-      return;
+      return false;
     }
     const onProgress = (d) => updateUploadProgress('editProgress', d);
     const sub = API.onAttachmentProgress(onProgress);
@@ -522,12 +552,15 @@ function renderEditDetail() {
         pendingMedia: body.pendingMedia,
         attachments: editAtts,
       });
-      if (!res.ok) { alert(res.error || '保存失败'); return; }
+      if (!res.ok) { alert(res.error || '保存失败'); return false; }
       await API.setTaskTags(editing.id, editTagIds);
+    } catch (err) {
+      alert((err && err.message) || '保存失败');
+      return false;
     } finally {
       hideUploadProgress('editProgress');
+      if (typeof sub === 'function') sub();
     }
-    if (typeof sub === 'function') sub();
     cleanupEditTagMenu();
     window._editIsDirty = null;
     const updated = (typeof API.getTask === 'function'
@@ -536,11 +569,27 @@ function renderEditDetail() {
     const idx = tasks.findIndex((x) => x.id === editing.id);
     if (idx >= 0) tasks[idx] = updated;
     editing = updated;
+    if (window.__IS_EDIT_WINDOW__) {
+      setEditWindowChromeTitle(updated && updated.text);
+      detailState.mode = 'edit';
+      updateOpenDetail();
+      return true;
+    }
     detailState.mode = 'view';
     await refresh();
     updateOpenDetail();
+    return true;
+  }
+  window.saveCurrentEdit = saveCurrentEdit;
+
+  document.getElementById('saveBtn').addEventListener('click', async () => {
+    await saveCurrentEdit();
   });
   document.getElementById('cancelEditBtn').addEventListener('click', async () => {
+    if (window.__IS_EDIT_WINDOW__) {
+      try { window.close(); } catch (_) { /* ignore */ }
+      return;
+    }
     if (!(await confirmLeaveEditIfDirty())) return;
     cleanupEditTagMenu();
     window._editIsDirty = null;

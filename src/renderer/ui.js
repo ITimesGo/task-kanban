@@ -23,6 +23,7 @@ const ui = (() => {
 
   // 几何居中的勾选 SVG（避免 ✓ 字形在圆内偏左上）
   const CHECK_ICO = '<svg class="card-check-ico" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.1 6.3l2.7 2.7 5.1-5.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const EDIT_WIN_ICO = '<svg class="card-editwin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4.5" width="8" height="8" rx="1.2"/><path d="M6.5 2.5h7v7"/><path d="M9.5 6.5l4-4"/></svg>';
 
   function statusActionIcon(done) {
     // 稳态：空心圆=待执行，勾=已完成；撤销倒计时另用 ↩
@@ -326,6 +327,16 @@ const ui = (() => {
         if (t && typeof h.onToggleSelect === 'function') h.onToggleSelect(t);
         return;
       }
+      const openEdit = e.target.closest && e.target.closest('[data-action="open-edit"]');
+      if (openEdit && cardsEl.contains(openEdit)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const card = openEdit.closest('.card');
+        const id = card && card.dataset.taskId;
+        const t = id != null ? h.taskById.get(String(id)) : null;
+        if (t && typeof API.openEditWindow === 'function') API.openEditWindow(t.id);
+        return;
+      }
       const toggle = e.target.closest && e.target.closest('[data-action="toggle"]');
       if (toggle && cardsEl.contains(toggle)) {
         e.stopPropagation();
@@ -390,6 +401,7 @@ const ui = (() => {
       ? `<span class="card-action-ico" aria-hidden="true">${CHECK_ICO}</span>`
       : '<span class="card-action-ico is-pending-mark" aria-hidden="true"></span>';
     card.innerHTML = `
+      <button type="button" class="card-action card-action-editwin" data-action="open-edit" title="独立窗口编辑" aria-label="独立窗口编辑"><span class="card-action-ico" aria-hidden="true">${EDIT_WIN_ICO}</span></button>
       <button type="button" class="card-action${done ? ' is-done' : ''}" data-action="toggle" title="${actionLabel}" aria-label="${actionLabel}">${statusIco}</button>
       <div class="card-main">
         <div class="card-title">

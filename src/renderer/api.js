@@ -13,6 +13,8 @@ for (const k of ['getAllTasks','getTask','createTask','toggleStatus','updateTask
 }
 window.API.onUpdateDownloadProgress = (cb) => window.taskAPI.onUpdateDownloadProgress(cb);
 window.API.onStorageChanged = (cb) => window.taskAPI.onStorageChanged(cb);
+window.API.onTasksChanged = (cb) => window.taskAPI.onTasksChanged(cb);
+window.API.openEditWindow = (taskId) => window.taskAPI.openEditWindow(taskId);
 window.API.onAttachmentProgress = (cb) => window.taskAPI.onAttachmentProgress(cb);
 window.API.onClosePopups = (cb) => window.taskAPI.onClosePopups(cb);
 window.API.ocrStatus = () => window.taskAPI.ocrStatus();

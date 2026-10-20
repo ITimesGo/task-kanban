@@ -1320,6 +1320,9 @@ document.getElementById('backupImportBtn').addEventListener('click', async () =>
 });
 
 API.onStorageChanged(() => { loadTags(); refresh(); renderTrashList(); });
+if (typeof API.onTasksChanged === 'function' && !window.__IS_EDIT_WINDOW__) {
+  API.onTasksChanged(() => { loadTags(); refresh(); });
+}
 
 function initAlwaysOnTop() {
   const pinBtn = document.getElementById('pinBtn');

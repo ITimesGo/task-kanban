@@ -41,6 +41,110 @@ let APP_DATA = storage.resolveStoragePath(APP_DATA_ROOT); // 实际存储目录�
 
 let win = null;
 let fsStore = null;
+/** @type {Map<string, Electron.BrowserWindow>} */
+const editWins = new Map();
+
+function dialogParent(event) {
+  try {
+    return BrowserWindow.fromWebContents(event.sender) || win;
+  } catch (_) {
+    return win;
+  }
+}
+
+function notifyTasksChanged() {
+  const send = (bw) => {
+    if (!bw || bw.isDestroyed()) return;
+    try { bw.webContents.send('tasks:changed'); } catch (_) { /* ignore */ }
+  };
+  send(win);
+  for (const bw of editWins.values()) send(bw);
+}
+
+function createEditWindow(taskId) {
+  const id = String(taskId);
+  const bw = new BrowserWindow({
+    width: 720,
+    height: 640,
+    minWidth: 480,
+    minHeight: 400,
+    center: true,
+    title: '编辑',
+    show: false,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#ffffff',
+      symbolColor: '#303133',
+      height: 40,
+    },
+    icon: path.join(__dirname, '../../assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
+    webPreferences: {
+      preload: path.join(__dirname, '../preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  bw._allowClose = false;
+  bw._closing = false;
+  bw.loadFile(path.join(__dirname, '../renderer/index.html'), { query: { edit: id } });
+  let shown = false;
+  const showBw = () => {
+    if (shown || bw.isDestroyed()) return;
+    shown = true;
+    bw.show();
+  };
+  bw.once('ready-to-show', showBw);
+  setTimeout(showBw, 4000);
+  bw.removeMenu();
+  bw.on('closed', () => {
+    if (editWins.get(id) === bw) editWins.delete(id);
+  });
+  bw.on('close', (e) => {
+    if (bw._allowClose || bw.isDestroyed()) return;
+    e.preventDefault();
+    if (bw._closing) return;
+    bw._closing = true;
+    (async () => {
+      let dirty = false;
+      try {
+        dirty = !!(await bw.webContents.executeJavaScript(
+          'typeof window.__editWindowIsDirty==="function"&&!!window.__editWindowIsDirty()'
+        ));
+      } catch (_) { /* ignore */ }
+      let action = 'close';
+      if (dirty) {
+        const { response } = await dialog.showMessageBox(bw, {
+          type: 'question',
+          buttons: ['保存', '不保存', '取消'],
+          defaultId: 0,
+          cancelId: 2,
+          message: '有未保存的修改',
+          detail: '保存后关闭，或不保存丢弃更改。',
+        });
+        action = response === 0 ? 'save' : response === 1 ? 'discard' : 'cancel';
+      }
+      if (action === 'cancel') {
+        bw._closing = false;
+        return;
+      }
+      if (action === 'save') {
+        let ok = false;
+        try {
+          ok = !!(await bw.webContents.executeJavaScript(
+            'window.__editWindowSave&&window.__editWindowSave()'
+          ));
+        } catch (_) { ok = false; }
+        if (!ok) {
+          bw._closing = false;
+          return;
+        }
+      }
+      bw._allowClose = true;
+      bw.close();
+    })().catch(() => { bw._closing = false; });
+  });
+  return bw;
+}
 
 // stream + supportFetchAPI：HTML5 <video> 需要 Range / 流式读取；secure 便于 media-src
 protocol.registerSchemesAsPrivileged([{
@@ -247,6 +351,7 @@ function setupStoreHandlers() {
             });
           }
         } catch (_) { /* ignore */ }
+        notifyTasksChanged();
         return { ok: true, task: final };
       }
 
@@ -290,6 +395,7 @@ function setupStoreHandlers() {
           });
         }
       } catch (_) { /* ignore */ }
+      notifyTasksChanged();
       return { ok: true, task: final };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -298,6 +404,7 @@ function setupStoreHandlers() {
   ipcHandle('tasks:toggle', (_e, id) => {
     const next = store.toggleStatus(fsStore.loadTasks(), id);
     fsStore.saveTasks(next);
+    notifyTasksChanged();
     return next.find((t) => t.id === id);
   });
   ipcHandle('tasks:update', async (event, id, payload) => {
@@ -389,6 +496,7 @@ function setupStoreHandlers() {
           });
         }
       } catch (_) { /* ignore */ }
+      notifyTasksChanged();
       return { ok: true, task: updated.find((t) => t.id === id) };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -400,6 +508,7 @@ function setupStoreHandlers() {
     if (!res.moved) return { ok: false, error: '任务不存在' };
     fsStore.saveTasks(res.tasks);
     fsStore.saveTrash(res.trash);
+    notifyTasksChanged();
     return { ok: true };
   });
 
@@ -410,6 +519,7 @@ function setupStoreHandlers() {
       if (!res.restored) return { ok: false, error: '回收站中无此任务' };
       fsStore.saveTasks(res.tasks);
       fsStore.saveTrash(res.trash);
+      notifyTasksChanged();
       return { ok: true, task: res.restored };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -423,6 +533,7 @@ function setupStoreHandlers() {
       fsStore.deleteAttachments(res.purged.attachments);
     }
     fsStore.saveTrash(res.trash);
+    notifyTasksChanged();
     return { ok: true };
   });
   ipcHandle('trash:empty', () => {
@@ -433,11 +544,12 @@ function setupStoreHandlers() {
       fsStore.deleteAttachments(t.attachments);
     }
     fsStore.saveTrash(res.trash);
+    notifyTasksChanged();
     return { ok: true, count: res.purged.length };
   });
 
-  ipcHandle('image:pick', async () => {
-    const res = await dialog.showOpenDialog(win, {
+  ipcHandle('image:pick', async (event) => {
+    const res = await dialog.showOpenDialog(dialogParent(event), {
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: '图片', extensions: ['jpg', 'jpeg', 'png', 'bmp'] }],
     });
@@ -452,8 +564,8 @@ function setupStoreHandlers() {
     return out;
   });
   // 图片 + 视频混合选取（新建/编辑「添加媒体」）
-  ipcHandle('media:pick', async () => {
-    const res = await dialog.showOpenDialog(win, {
+  ipcHandle('media:pick', async (event) => {
+    const res = await dialog.showOpenDialog(dialogParent(event), {
       properties: ['openFile', 'multiSelections'],
       filters: [
         { name: '图片与视频', extensions: ['jpg', 'jpeg', 'png', 'bmp', 'mp4', 'webm', 'mov'] },
@@ -509,8 +621,8 @@ function setupStoreHandlers() {
   });
 
   // 附件文件：选择（返回路径列表）与打开（用外部软件）
-  ipcHandle('file:pick', async () => {
-    const res = await dialog.showOpenDialog(win, {
+  ipcHandle('file:pick', async (event) => {
+    const res = await dialog.showOpenDialog(dialogParent(event), {
       title: '选择附件文件',
       properties: ['openFile', 'multiSelections'],
     });
@@ -622,6 +734,7 @@ function setupTagHandlers() {
       next = next.map((t) => (t.id === id ? moved : t));
     }
     fsStore.saveTasks(next);
+    notifyTasksChanged();
     return { ok: true, task: next.find((t) => t.id === id) };
   });
 }
@@ -788,12 +901,13 @@ function setupWindowHandlers() {
     win.setAlwaysOnTop(!!flag);
     return !!flag;
   });
-  ipcHandle('window:setTitleBarOverlay', (_e, opts = {}) => {
-    if (!win || win.isDestroyed() || typeof win.setTitleBarOverlay !== 'function') {
+  ipcHandle('window:setTitleBarOverlay', (event, opts = {}) => {
+    const bw = dialogParent(event);
+    if (!bw || bw.isDestroyed() || typeof bw.setTitleBarOverlay !== 'function') {
       return { ok: false };
     }
     try {
-      win.setTitleBarOverlay({
+      bw.setTitleBarOverlay({
         color: opts.color || '#ffffff',
         symbolColor: opts.symbolColor || '#303133',
         height: 40,
@@ -802,6 +916,19 @@ function setupWindowHandlers() {
     } catch (err) {
       return { ok: false, error: err.message };
     }
+  });
+  ipcHandle('window:openEdit', (_e, taskId) => {
+    const id = String(taskId || '').trim();
+    if (!id) return { ok: false, error: '缺少任务 id' };
+    const existing = editWins.get(id);
+    if (existing && !existing.isDestroyed()) {
+      if (existing.isMinimized()) existing.restore();
+      existing.focus();
+      return { ok: true, focused: true };
+    }
+    const bw = createEditWindow(id);
+    editWins.set(id, bw);
+    return { ok: true, focused: false };
   });
 }
 

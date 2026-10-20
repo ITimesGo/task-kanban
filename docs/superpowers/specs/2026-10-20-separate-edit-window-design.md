@@ -1,7 +1,8 @@
 # 独立编辑窗口 — 设计规格
 
 日期：2026-10-20  
-状态：规格已评审通过，待用户确认后写实现计划  
+状态：规格已评审通过，实现已落地（见 plans/2026-10-20-separate-edit-window.md）  
+ 
  
 范围：简易任务看板 — 列表卡片 / 详情弹窗新增入口，Electron 多窗编辑  
 相关代码：`src/main/main.js`、`src/preload.js`、`src/renderer/index.html`、`ui.js`、`detail.js`、`richEditor.js`、`state.js`、`filters.js`
