@@ -1,7 +1,8 @@
 # 独立编辑窗口 — 设计规格
 
 日期：2026-10-20  
-状态：待评审  
+状态：规格已评审通过，待用户确认后写实现计划  
+ 
 范围：简易任务看板 — 列表卡片 / 详情弹窗新增入口，Electron 多窗编辑  
 相关代码：`src/main/main.js`、`src/preload.js`、`src/renderer/index.html`、`ui.js`、`detail.js`、`richEditor.js`、`state.js`、`filters.js`
 
@@ -144,13 +145,14 @@
         ├─ updateTask/setTags → FileStore
         │         │
         │         ▼
-        │   broadcast storage:changed
+        │   emit + fan-out refresh (§3.2: storage:changed 或 tasks:changed)
         │         │
         │         ▼
         │   main + other windows refresh
         │
-        └─ dirty close → dialog → save | discard | cancel
+        └─ dirty close → 三选一 dialog → save | discard | cancel
 ```
+
 
 ---
 
@@ -179,10 +181,11 @@
 
 ## 7. 实现分期建议
 
-1. Main：`editWins` Map + `window:openEdit` + 关闭不 quit + `storage:changed` 广播。
-2. Preload API + renderer `?edit=` 启动分支 + 最小编辑壳 + 保存/脏关窗。
+1. Main：`editWins` Map + `window:openEdit` + 编辑窗关闭不 quit；CRUD 成功后按 §3.2 **emit + fan-out** 刷新事件。
+2. Preload API + renderer `?edit=` 启动分支 + 最小编辑壳 + 保存 + **三选一**脏关窗。
 3. 卡片 + 详情 icon 与样式。
-4. 同步策略细调与手工回归。
+4. 同步策略细调与手工回归；主窗 quit 时默认随 `app.quit()` 结束编辑窗（首版可不逐窗询问脏数据）。
+
 
 ---
 
