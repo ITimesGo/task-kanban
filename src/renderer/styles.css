@@ -6955,6 +6955,50 @@ body.edit-window #detailClose {
   display: none !important;
 }
 
+/* 编辑区占满：header/footer 固定，中间 #editDrop 吃掉剩余高度 */
+body.edit-window #detailModal {
+  display: flex !important;
+  flex-direction: column !important;
+}
+body.edit-window #detailModal .modal-header.detail-top {
+  flex: 0 0 auto;
+}
+body.edit-window #detailModal #detailActions.modal-footer {
+  flex: 0 0 auto;
+}
+body.edit-window #detailModal .modal-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  padding: 10px 14px 8px !important;
+}
+body.edit-window #editDrop {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+body.edit-window #editDrop #editEditor.rich-editor-host,
+body.edit-window #editDrop .rich-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
+body.edit-window #editDrop .rich-surface {
+  flex: 1 1 auto;
+  min-height: 120px;
+  max-height: none;
+}
+body.edit-window #editDrop .edit-side {
+  flex: 0 0 auto;
+  margin-top: 8px;
+}
+
 /* 卡片：独立编辑入口 */
 .card-action-editwin {
   border-color: color-mix(in srgb, var(--text-muted, #909399) 45%, var(--border));
