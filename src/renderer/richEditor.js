@@ -116,29 +116,74 @@ function createRichEditor(host, options) {
     }
   }
 
-  const MEDIA_ZOOM_ICO = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.25" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.2 15.2L21 21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10.5 8v5M8 10.5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
-  const MEDIA_DEL_ICO = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  // viewBox 几何居中，避免笔画视觉偏左上
+  const MEDIA_ZOOM_ICO = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M11 8v6M8 11h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  const MEDIA_DEL_ICO = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
+  /** 按图片真实高度缩放工具条，矮图用更小圆钮，避免超出 */
+  function syncMediaToolbarLayout(fig) {
+    if (!fig) return;
+    const media = fig.querySelector('img, video');
+    const box = media || fig;
+    const h = (box.getBoundingClientRect && box.getBoundingClientRect().height) || 0;
+    const w = (box.getBoundingClientRect && box.getBoundingClientRect().width) || 0;
+    // 矮/窄图缩小圆钮；窄且够高时改竖排，放大镜不删
+    fig.classList.toggle('is-media-compact', (h > 0 && h < 40) || (w > 0 && w < 56));
+    fig.classList.toggle('is-media-narrow', w > 0 && w < 56 && h >= 40);
+  }
 
   function ensureMediaActionButtons() {
     surface.querySelectorAll('figure.doc-media').forEach((fig) => {
       const isVideo = fig.classList.contains('doc-video') || fig.getAttribute('data-kind') === 'video';
-      if (!fig.querySelector(':scope > .doc-media-zoom')) {
+      let bar = fig.querySelector(':scope > .doc-media-actions');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.className = 'doc-media-actions';
+        // 把散落的旧按钮收进工具条
+        fig.querySelectorAll(':scope > .doc-media-zoom, :scope > .doc-media-del').forEach((el) => {
+          bar.appendChild(el);
+        });
+        fig.appendChild(bar);
+      }
+      if (!bar.querySelector('.doc-media-zoom')) {
         const zoom = document.createElement('button');
         zoom.type = 'button';
         zoom.className = 'doc-media-zoom';
         zoom.title = isVideo ? '预览视频' : '预览图片';
         zoom.setAttribute('aria-label', zoom.title);
         zoom.innerHTML = MEDIA_ZOOM_ICO;
-        fig.appendChild(zoom);
+        bar.appendChild(zoom);
       }
-      if (!fig.querySelector(':scope > .doc-media-del')) {
+      if (!bar.querySelector('.doc-media-del')) {
         const del = document.createElement('button');
         del.type = 'button';
         del.className = 'doc-media-del';
         del.title = isVideo ? '删除视频' : '删除图片';
         del.setAttribute('aria-label', del.title);
         del.innerHTML = MEDIA_DEL_ICO;
-        fig.appendChild(del);
+        bar.appendChild(del);
+      }
+      // 保证顺序：放大镜在左、删除在右
+      const zoomBtn = bar.querySelector('.doc-media-zoom');
+      const delBtn = bar.querySelector('.doc-media-del');
+      if (zoomBtn && delBtn && zoomBtn.nextElementSibling !== delBtn) {
+        bar.insertBefore(zoomBtn, delBtn);
+      }
+      const media = fig.querySelector('img, video');
+      if (media) {
+        const bump = () => syncMediaToolbarLayout(fig);
+        if (media.tagName === 'IMG') {
+          if (media.complete) bump();
+          else media.addEventListener('load', bump, { once: true });
+        } else if (media.videoWidth) bump();
+        else media.addEventListener('loadedmetadata', bump, { once: true });
+      }
+      syncMediaToolbarLayout(fig);
+      if (typeof ResizeObserver !== 'undefined' && !fig._mediaToolbarRo) {
+        const ro = new ResizeObserver(() => syncMediaToolbarLayout(fig));
+        ro.observe(fig);
+        if (media) ro.observe(media);
+        fig._mediaToolbarRo = ro;
       }
     });
   }
@@ -906,8 +951,10 @@ function createRichEditor(host, options) {
 
   function onResizeEnd() {
     if (!resizeDrag) return;
+    const fig = resizeDrag.fig;
     resizeDrag = null;
     document.body.classList.remove('is-media-resizing');
+    if (fig) syncMediaToolbarLayout(fig);
     emit();
   }
 

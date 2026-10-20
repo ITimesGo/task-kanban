@@ -18,6 +18,10 @@
   let freezeHeld = false; // 已冻结截止时间（悬停或灯箱）
   /** 取消过期的缩略图拉取（提示条已换/关掉） */
   let thumbToken = 0;
+  /** 合并 focus + visibilitychange，避免切回前台连打两次 */
+  let resumeTimer = 0;
+  /** 缩略图是否已在拉取 / 已有（避免悬停重复 readImage） */
+  let thumbLoading = false;
 
   const bar = () => document.getElementById('clipQuickBar');
   const textEl = () => document.getElementById('clipQuickText');
@@ -124,6 +128,7 @@
 
   function hideBar() {
     thumbToken += 1;
+    thumbLoading = false;
     clearAutoHide();
     const el = bar();
     if (el) el.classList.add('hidden');
@@ -153,18 +158,37 @@
     }
   }
 
-  /** 条先出来，空闲后再拉低清缩略图；点放大/填入再拉原图 */
+  /**
+   * 缩略图会 clipboard.readImage，大图可卡主进程数十秒。
+   * 绝不能在切回前台/轮询里自动拉；仅悬停提示条时再读。
+   */
   function scheduleThumbForPending(sig) {
+    if (!sig || thumbLoading) return;
+    if (pending && pending.type === 'image' && pending.dataUrl) return;
     const token = ++thumbToken;
+    thumbLoading = true;
+    paintThumb('', { loading: true });
     const run = async () => {
-      if (token !== thumbToken) return;
-      if (!pending || pending.type !== 'image' || pending.sig !== sig) return;
-      if (typeof API.clipboardPeek !== 'function') return;
+      if (token !== thumbToken) {
+        thumbLoading = false;
+        return;
+      }
+      if (!pending || pending.type !== 'image' || pending.sig !== sig) {
+        thumbLoading = false;
+        return;
+      }
+      if (typeof API.clipboardPeek !== 'function') {
+        thumbLoading = false;
+        return;
+      }
       try {
         const thumb = await API.clipboardPeek({ withData: true, quality: 'thumb' });
         if (token !== thumbToken) return;
         if (!pending || pending.type !== 'image' || pending.sig !== sig) return;
-        if (!thumb || !thumb.ok || thumb.type !== 'image' || !thumb.dataUrl) return;
+        if (!thumb || !thumb.ok || thumb.type !== 'image' || !thumb.dataUrl) {
+          paintThumb('', { loading: false });
+          return;
+        }
         pending = {
           ...pending,
           dataUrl: thumb.dataUrl,
@@ -172,17 +196,20 @@
           sig: thumb.sig || sig,
         };
         paintThumb(thumb.dataUrl);
-      } catch (_) { /* ignore */ }
+      } catch (_) {
+        paintThumb('', { loading: false });
+      } finally {
+        if (token === thumbToken) thumbLoading = false;
+      }
     };
-    if (typeof requestIdleCallback === 'function') {
-      requestIdleCallback(() => { run(); }, { timeout: 500 });
-    } else {
-      setTimeout(run, 48);
-    }
+    // 再让出一帧，保证悬停反馈先上屏，再去堵主进程
+    setTimeout(run, 0);
   }
 
   function showBar(payload) {
     pending = payload;
+    thumbLoading = false;
+    thumbToken += 1;
     const el = bar();
     const t = textEl();
     const thumb = thumbEl();
@@ -191,9 +218,9 @@
       if (payload.dataUrl) {
         paintThumb(payload.dataUrl);
       } else if (thumb) {
-        // 占位先出，避免「没图」；缩略图异步补上
-        paintThumb('', { loading: true });
-        scheduleThumbForPending(payload.sig);
+        // 只出占位，不 readImage——切回前台有大图时否则会卡死几十秒
+        paintThumb('', { loading: false });
+        thumb.title = '悬停加载预览，点击看原图';
       }
     } else {
       t.textContent = `剪贴板：${payload.preview || '新文字'}`;
@@ -206,6 +233,15 @@
     syncTargetLabel();
     el.classList.remove('hidden');
     scheduleAutoHide();
+  }
+
+  function scheduleResumePoll() {
+    if (resumeTimer) clearTimeout(resumeTimer);
+    // 等窗口真正画完再轻量 probe；绝不在这里 readImage
+    resumeTimer = window.setTimeout(() => {
+      resumeTimer = 0;
+      if (enabled) poll({ resume: true });
+    }, 400);
   }
 
   /**
@@ -255,7 +291,7 @@
       lastSig = res.sig;
 
       if (res.type === 'image') {
-        // 先弹条（不卡主线程）；缩略图空闲补画；点放大/填入再读原图
+        // 只弹条 + 占位；缩略图等用户悬停再 readImage（resume/轮询都一样）
         showBar({
           type: 'image',
           sig: res.sig,
@@ -373,6 +409,10 @@
     barEl.addEventListener('mouseenter', () => {
       if (!pending) return;
       paused = true;
+      // 悬停才拉缩略图，避免切回前台自动 readImage 卡死
+      if (pending.type === 'image' && !pending.dataUrl && pending.sig) {
+        scheduleThumbForPending(pending.sig);
+      }
     });
     barEl.addEventListener('mouseleave', () => {
       if (!pending) return;
@@ -383,13 +423,12 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     if (!enabled) return;
-    // 切回前台立刻轻量探测：有新内容则弹条（仍不 readImage）
-    setTimeout(() => { if (enabled) poll({ resume: true }); }, 0);
+    scheduleResumePoll();
   });
 
   window.addEventListener('focus', () => {
     if (!enabled || document.hidden) return;
-    setTimeout(() => { if (enabled) poll({ resume: true }); }, 0);
+    scheduleResumePoll();
   });
 
   // 延迟启动，让首屏先可交互

@@ -287,17 +287,24 @@ function clipboardProbe(opts = {}) {
   }
 }
 
+/** 防止并发 peek 叠加重读同一张大图 */
+let peekBusy = false;
+
 /**
- * 读取剪贴板内容（可能很重）。仅在用户点「填入」/放大时调用。
+ * 读取剪贴板内容（可能很重，会卡主进程）。
+ * 仅允许用户主动操作（悬停预览 / 填入 / 放大）调用，切回前台禁止走这里。
  * opts.quality: 'thumb' | 'full'
  */
 function clipboardPeek(opts = {}) {
+  if (peekBusy) return { ok: false, error: '剪贴板正忙，请稍候' };
   const withData = !!(opts && opts.withData);
   const quality = opts && opts.quality === 'full' ? 'full' : 'thumb';
+  peekBusy = true;
   try {
     const seq = getClipboardSequenceNumber();
     const formats = clipboard.availableFormats() || [];
     if (imageLooksPresent(formats)) {
+      // readImage 对大图可阻塞数十秒；调用方必须已避开 resume 热路径
       const img = clipboard.readImage();
       if (img && !img.isEmpty()) {
         const sig = imageSig(img);
@@ -321,6 +328,8 @@ function clipboardPeek(opts = {}) {
     return { ok: true, type: 'empty', sig: '', seq };
   } catch (err) {
     return { ok: false, error: err.message || String(err) };
+  } finally {
+    peekBusy = false;
   }
 }
 
