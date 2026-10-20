@@ -616,7 +616,7 @@
     0 4px 18px rgba(15, 40, 80, 0.06);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  padding-right: calc(var(--card-ctrl-inset) + var(--card-ctrl-w) * 2 + 14px);
+  padding-right: calc(var(--card-ctrl-inset) + var(--card-ctrl-w) + 8px);
   margin-bottom: 10px;
   transform: none;
   transition:
@@ -4529,7 +4529,8 @@ body.is-media-resizing {
   border: none;
   border-radius: var(--radius);
   padding: 14px 16px;
-  padding-right: calc(var(--card-ctrl-inset) + var(--card-ctrl-w) * 2 + 14px);
+  /* 右侧只留一列按钮宽；上下叠放时用 min-height 区域留给动作组 */
+  padding-right: calc(var(--card-ctrl-inset) + var(--card-ctrl-w) + 8px);
   margin-bottom: 10px;
   overflow: visible;
   cursor: pointer;
@@ -4784,14 +4785,14 @@ body.is-media-resizing {
     color 0.22s ease,
     box-shadow 0.22s ease;
 }
-/* 右上：动作组（独立编辑 + 完成勾选并排，避免叠压） */
+/* 右上：动作组（独立编辑在上、完成勾选在下） */
 .card-actions {
   position: absolute;
   z-index: 2;
   top: var(--card-ctrl-inset);
   right: var(--card-ctrl-inset);
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
   gap: 6px;
   pointer-events: none;
