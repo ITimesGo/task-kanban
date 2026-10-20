@@ -6960,8 +6960,9 @@ body.edit-window #detailModal {
   display: flex !important;
   flex-direction: column !important;
 }
+/* 窗口标题栏已有「编辑 · …」，去掉重复的「编辑任务」头 */
 body.edit-window #detailModal .modal-header.detail-top {
-  flex: 0 0 auto;
+  display: none !important;
 }
 body.edit-window #detailModal #detailActions.modal-footer {
   flex: 0 0 auto;
