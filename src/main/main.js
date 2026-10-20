@@ -71,6 +71,7 @@ function createEditWindow(taskId) {
     center: true,
     title: '编辑',
     show: false,
+    backgroundColor: '#ffffff',
     titleBarStyle: 'hidden',
     titleBarOverlay: {
       color: '#ffffff',
@@ -82,19 +83,30 @@ function createEditWindow(taskId) {
       preload: path.join(__dirname, '../preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      backgroundThrottling: false,
     },
   });
   bw._allowClose = false;
   bw._closing = false;
+  // 预取任务，编辑窗可用同步 IPC 立刻拿到，减少首屏等待
+  try {
+    const list = fsStore ? fsStore.loadTasks() : [];
+    bw._editPrimeTask = (list || []).find((t) => t && String(t.id) === id) || null;
+  } catch (_) {
+    bw._editPrimeTask = null;
+  }
   bw.loadFile(path.join(__dirname, '../renderer/index.html'), { query: { edit: id } });
   let shown = false;
   const showBw = () => {
     if (shown || bw.isDestroyed()) return;
     shown = true;
     bw.show();
+    bw.focus();
   };
+  // dom-ready 早于 ready-to-show，先亮窗再填内容，降低“点了没反应”感
+  bw.webContents.once('dom-ready', showBw);
   bw.once('ready-to-show', showBw);
-  setTimeout(showBw, 4000);
+  setTimeout(showBw, 2500);
   bw.removeMenu();
   bw.on('closed', () => {
     if (editWins.get(id) === bw) editWins.delete(id);
@@ -301,6 +313,22 @@ function setupStoreHandlers() {
   ipcHandle('tasks:get', (_e, id) => {
     const list = fsStore.loadTasks();
     return (list || []).find((t) => t && t.id === id) || null;
+  });
+  // 编辑窗首屏：同步取任务（优先窗口预取缓存），避免 await 一轮 IPC
+  try { ipcMain.removeAllListeners('tasks:getSync'); } catch (_) {}
+  ipcMain.on('tasks:getSync', (event, id) => {
+    try {
+      const want = String(id || '');
+      const bw = BrowserWindow.fromWebContents(event.sender);
+      if (bw && bw._editPrimeTask && String(bw._editPrimeTask.id) === want) {
+        event.returnValue = bw._editPrimeTask;
+        return;
+      }
+      const list = fsStore.loadTasks();
+      event.returnValue = (list || []).find((t) => t && String(t.id) === want) || null;
+    } catch (_) {
+      event.returnValue = null;
+    }
   });
   ipcHandle('tasks:create', async (event, payload) => {
     try {

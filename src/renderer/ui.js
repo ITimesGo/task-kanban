@@ -402,8 +402,8 @@ const ui = (() => {
       : '<span class="card-action-ico is-pending-mark" aria-hidden="true"></span>';
     card.innerHTML = `
       <div class="card-actions">
-        <button type="button" class="card-action card-action-editwin" data-action="open-edit" title="独立窗口编辑" aria-label="独立窗口编辑"><span class="card-action-ico" aria-hidden="true">${EDIT_WIN_ICO}</span></button>
         <button type="button" class="card-action${done ? ' is-done' : ''}" data-action="toggle" title="${actionLabel}" aria-label="${actionLabel}">${statusIco}</button>
+        <button type="button" class="card-action card-action-editwin" data-action="open-edit" title="独立窗口编辑" aria-label="独立窗口编辑"><span class="card-action-ico" aria-hidden="true">${EDIT_WIN_ICO}</span></button>
       </div>
       <div class="card-main">
         <div class="card-title">

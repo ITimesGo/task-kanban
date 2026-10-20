@@ -4,6 +4,7 @@ const { pathToFileURL } = require('url');
 contextBridge.exposeInMainWorld('taskAPI', {
   getAllTasks: () => ipcRenderer.invoke('tasks:getAll'),
   getTask: (id) => ipcRenderer.invoke('tasks:get', id),
+  getTaskSync: (id) => ipcRenderer.sendSync('tasks:getSync', id),
   createTask: (data) => ipcRenderer.invoke('tasks:create', data),
   toggleStatus: (id) => ipcRenderer.invoke('tasks:toggle', id),
   updateTask: (id, data) => ipcRenderer.invoke('tasks:update', id, data),

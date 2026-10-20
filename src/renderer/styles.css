@@ -4785,7 +4785,7 @@ body.is-media-resizing {
     color 0.22s ease,
     box-shadow 0.22s ease;
 }
-/* 右上：动作组（独立编辑在上、完成勾选在下） */
+/* 右上：动作组（上：完成勾选；下：独立编辑） */
 .card-actions {
   position: absolute;
   z-index: 2;

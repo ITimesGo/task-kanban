@@ -10,6 +10,11 @@ function setEditTagRedraw(fn) {
   editTagRedraw = typeof fn === 'function' ? fn : null;
 }
 
+/** 标签列表异步到位后，只刷新编辑态标签条，不重挂富文本 */
+function refreshEditTagPicker() {
+  if (editTagRedraw) editTagRedraw({});
+}
+
 function afterTagMutation(opts) {
   const deletedId = opts && opts.deletedId;
   const selectedId = opts && opts.selectedId;

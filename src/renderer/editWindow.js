@@ -20,6 +20,15 @@
     if (titleEl) titleEl.textContent = title;
   }
 
+  function mountEdit(task) {
+    editing = task;
+    detailState = { mode: 'edit', dataUrl: [] };
+    setEditWindowTitle(task.text);
+    const overlay = document.getElementById('detailOverlay');
+    if (overlay) overlay.classList.remove('hidden');
+    if (typeof updateOpenDetail === 'function') updateOpenDetail();
+  }
+
   window.__editWindowIsDirty = () =>
     typeof window._editIsDirty === 'function' && !!window._editIsDirty();
 
@@ -34,23 +43,25 @@
     try {
       if (typeof initTheme === 'function') initTheme();
       if (typeof initAlwaysOnTop === 'function') initAlwaysOnTop();
-      if (typeof loadTags === 'function') await loadTags();
 
-      const task = typeof API.getTask === 'function'
-        ? await API.getTask(id)
-        : (await API.getAllTasks()).find((t) => String(t.id) === String(id));
+      // 同步预取优先，立刻挂载编辑器；标签并行加载后再补一次（避免首屏干等）
+      let task = typeof API.getTaskSync === 'function' ? API.getTaskSync(id) : null;
+      if (!task && typeof API.getTask === 'function') {
+        task = await API.getTask(id);
+      } else if (!task) {
+        task = (await API.getAllTasks()).find((t) => String(t.id) === String(id));
+      }
       if (!task) {
         alert('任务不存在');
         try { window.close(); } catch (_) { /* ignore */ }
         return;
       }
 
-      editing = task;
-      detailState = { mode: 'edit', dataUrl: [] };
-      setEditWindowTitle(task.text);
-      const overlay = document.getElementById('detailOverlay');
-      if (overlay) overlay.classList.remove('hidden');
-      if (typeof updateOpenDetail === 'function') updateOpenDetail();
+      const tagsP = typeof loadTags === 'function' ? loadTags() : Promise.resolve();
+      mountEdit(task);
+      await tagsP;
+      // 只刷标签条，避免整页 remount 闪烁/丢焦点
+      if (typeof refreshEditTagPicker === 'function') refreshEditTagPicker();
 
       if (typeof API.onTasksChanged === 'function') {
         API.onTasksChanged(async () => {
@@ -60,10 +71,7 @@
             ? await API.getTask(id)
             : null;
           if (!fresh) return;
-          editing = fresh;
-          detailState = { mode: 'edit', dataUrl: [] };
-          setEditWindowTitle(fresh.text);
-          if (typeof updateOpenDetail === 'function') updateOpenDetail();
+          mountEdit(fresh);
         });
       }
     } catch (err) {

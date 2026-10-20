@@ -15,6 +15,15 @@ window.API.onUpdateDownloadProgress = (cb) => window.taskAPI.onUpdateDownloadPro
 window.API.onStorageChanged = (cb) => window.taskAPI.onStorageChanged(cb);
 window.API.onTasksChanged = (cb) => window.taskAPI.onTasksChanged(cb);
 window.API.openEditWindow = (taskId) => window.taskAPI.openEditWindow(taskId);
+window.API.getTaskSync = (id) => {
+  try {
+    return typeof window.taskAPI.getTaskSync === 'function'
+      ? window.taskAPI.getTaskSync(id)
+      : null;
+  } catch (_) {
+    return null;
+  }
+};
 window.API.onAttachmentProgress = (cb) => window.taskAPI.onAttachmentProgress(cb);
 window.API.onClosePopups = (cb) => window.taskAPI.onClosePopups(cb);
 window.API.ocrStatus = () => window.taskAPI.ocrStatus();
