@@ -15,6 +15,7 @@ window.API.onUpdateDownloadProgress = (cb) => window.taskAPI.onUpdateDownloadPro
 window.API.onStorageChanged = (cb) => window.taskAPI.onStorageChanged(cb);
 window.API.onTasksChanged = (cb) => window.taskAPI.onTasksChanged(cb);
 window.API.openEditWindow = (taskId) => window.taskAPI.openEditWindow(taskId);
+window.API.onEditActivate = (cb) => window.taskAPI.onEditActivate(cb);
 window.API.getTaskSync = (id) => {
   try {
     return typeof window.taskAPI.getTaskSync === 'function'

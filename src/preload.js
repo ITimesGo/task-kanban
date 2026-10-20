@@ -43,6 +43,11 @@ contextBridge.exposeInMainWorld('taskAPI', {
   setAlwaysOnTop: (flag) => ipcRenderer.invoke('window:setAlwaysOnTop', flag),
   setTitleBarOverlay: (opts) => ipcRenderer.invoke('window:setTitleBarOverlay', opts),
   openEditWindow: (taskId) => ipcRenderer.invoke('window:openEdit', taskId),
+  onEditActivate: (cb) => {
+    const handler = (_e, task) => cb(task);
+    ipcRenderer.on('edit:activate', handler);
+    return () => { ipcRenderer.removeListener('edit:activate', handler); };
+  },
   pickAttachments: () => ipcRenderer.invoke('file:pick'),
   openAttachment: (rel) => ipcRenderer.invoke('file:open', rel),
   allowMediaSrcPath: (absPath) => ipcRenderer.invoke('media:allowSrcPath', absPath),
