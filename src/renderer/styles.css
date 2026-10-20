@@ -2047,7 +2047,8 @@
 }
 [data-skin="apple"] #settingsClose,
 [data-skin="apple"] #detailClose,
-[data-skin="apple"] #tagClose {
+[data-skin="apple"] #tagClose,
+[data-skin="apple"] #detailModal .detail-popout-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2065,15 +2066,24 @@
 }
 [data-skin="apple"] #settingsClose svg,
 [data-skin="apple"] #detailClose svg,
-[data-skin="apple"] #tagClose svg {
+[data-skin="apple"] #tagClose svg,
+[data-skin="apple"] #detailModal .detail-popout-btn svg {
   width: 11px;
   height: 11px;
 }
+[data-skin="apple"] #detailModal .detail-popout-btn svg {
+  width: 14px;
+  height: 14px;
+}
 [data-skin="apple"] #settingsClose:hover,
 [data-skin="apple"] #detailClose:hover,
-[data-skin="apple"] #tagClose:hover {
+[data-skin="apple"] #tagClose:hover,
+[data-skin="apple"] #detailModal .detail-popout-btn:hover {
   background: rgba(118, 118, 128, 0.28);
   color: #1d1d1f;
+}
+[data-skin="apple"] #detailModal .detail-popout-btn:hover {
+  color: var(--primary);
 }
 
 [data-skin="apple"] .meta-chip {
@@ -5322,6 +5332,34 @@ textarea:focus {
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
+}
+#detailModal .detail-top-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+#detailModal .detail-popout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background var(--transition), color var(--transition);
+}
+#detailModal .detail-popout-btn:hover {
+  background: var(--surface-2);
+  color: var(--primary);
+}
+#detailModal .detail-popout-btn[hidden] {
+  display: none !important;
 }
 #detailModal .modal-header h2,
 #detailHead h2 { font-size: 16px; }

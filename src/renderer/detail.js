@@ -81,6 +81,7 @@ async function closeDetailModal() {
   disposeEditEditor();
   window._editIsDirty = null;
   if (detailState) detailState.mode = 'view';
+  syncDetailPopoutBtn();
   if (typeof window.syncClipboardQuickTargetLabel === 'function') {
     window.syncClipboardQuickTargetLabel();
   }
@@ -100,8 +101,6 @@ function disposeEditEditor() {
   }
 }
 
-const EDIT_WIN_ICO = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4.5" width="8" height="8" rx="1.2"/><path d="M6.5 2.5h7v7"/><path d="M9.5 6.5l4-4"/></svg>';
-
 function setEditWindowChromeTitle(text) {
   const helpers = window.EditWindowHelpers;
   const title = helpers && helpers.editWindowTitle
@@ -118,11 +117,14 @@ function updateOpenDetail() {
     detailState.mode = 'edit';
     disposeEditEditor();
     renderEditDetail();
+    syncDetailPopoutBtn();
     return;
   }
   if (detailState.mode === 'edit') {
     disposeEditEditor();
     renderEditDetail();
+    syncDetailPopoutBtn();
+    return;
   } else {
     disposeEditEditor();
     if (typeof window.syncClipboardQuickTargetLabel === 'function') {
@@ -136,19 +138,9 @@ function updateOpenDetail() {
         <button id="toggleBtn" type="button">${done ? '取消完成' : '标记完成'}</button>
       </div>
       <div class="detail-footer-right">
-        <button id="openEditWinBtn" class="icon-btn" type="button" title="独立窗口编辑" aria-label="独立窗口编辑">${EDIT_WIN_ICO}</button>
         <button id="editBtn" class="primary" type="button">编辑</button>
       </div>`;
     document.getElementById('toggleBtn').addEventListener('click', () => toggleStatus(editing));
-    document.getElementById('openEditWinBtn').addEventListener('click', (e) => {
-      const btn = e.currentTarget;
-      if (!editing) return;
-      if (typeof API.openEditWindowFromButton === 'function') {
-        API.openEditWindowFromButton(btn, editing.id);
-      } else if (typeof API.openEditWindow === 'function') {
-        API.openEditWindow(editing.id);
-      }
-    });
     document.getElementById('editBtn').addEventListener('click', () => {
       detailState.mode = 'edit';
       detailState.dataUrl = [];
@@ -156,6 +148,19 @@ function updateOpenDetail() {
     });
     document.getElementById('delBtn').addEventListener('click', deleteTask);
   }
+  syncDetailPopoutBtn();
+}
+
+function syncDetailPopoutBtn() {
+  const btn = document.getElementById('openEditWinBtn');
+  if (!btn) return;
+  // 仅详情只读态显示；就地编辑 / 独立编辑窗内隐藏
+  const show = !window.__IS_EDIT_WINDOW__
+    && detailState
+    && detailState.mode === 'view'
+    && editing
+    && editing.id != null;
+  btn.hidden = !show;
 }
 
 function renderEditDetail() {
@@ -631,6 +636,18 @@ $('#detailOverlay').addEventListener('click', (e) => {
 $('#detailClose').addEventListener('click', () => {
   closeDetailModal();
 });
+const openEditWinBtnEl = document.getElementById('openEditWinBtn');
+if (openEditWinBtnEl) {
+  openEditWinBtnEl.addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    if (!editing || editing.id == null) return;
+    if (typeof API.openEditWindowFromButton === 'function') {
+      API.openEditWindowFromButton(btn, editing.id);
+    } else if (typeof API.openEditWindow === 'function') {
+      API.openEditWindow(editing.id);
+    }
+  });
+}
 
 let _editPasteAdd = null;
 bindContentPaste({
