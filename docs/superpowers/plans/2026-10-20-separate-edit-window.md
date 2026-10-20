@@ -191,19 +191,19 @@ bw.on('close', (e) => {
         'typeof window.__editWindowIsDirty==="function"&&!!window.__editWindowIsDirty()'
       ));
     } catch (_) {}
-    const action = resolveDirtyCloseAction({
-      dirty,
-      response: dirty
-        ? (await dialog.showMessageBox(bw, {
-            type: 'question',
-            buttons: ['保存', '不保存', '取消'],
-            defaultId: 0,
-            cancelId: 2,
-            message: '有未保存的修改',
-            detail: '保存后关闭，或不保存丢弃更改。',
-          })).response
-        : undefined,
-    });
+    // Inline mapping (do NOT call renderer helper — would ReferenceError in main)
+    let action = 'close';
+    if (dirty) {
+      const { response } = await dialog.showMessageBox(bw, {
+        type: 'question',
+        buttons: ['保存', '不保存', '取消'],
+        defaultId: 0,
+        cancelId: 2,
+        message: '有未保存的修改',
+        detail: '保存后关闭，或不保存丢弃更改。',
+      });
+      action = response === 0 ? 'save' : response === 1 ? 'discard' : 'cancel';
+    }
     if (action === 'cancel') { bw._closing = false; return; }
     if (action === 'save') {
       const ok = await bw.webContents.executeJavaScript(
@@ -217,7 +217,7 @@ bw.on('close', (e) => {
 });
 ```
 
-Expose `resolveDirtyCloseAction` in main by requiring the helpers file with a small Node path, **or** duplicate the 4-line mapping inline in main to avoid bundling renderer helpers into main — **inline the mapping in main** (YAGNI).
+Also pass `center: true` when constructing the edit `BrowserWindow`.
 
 - [ ] **Step 4: `window:openEdit` in `setupWindowHandlers`**
 
@@ -344,11 +344,36 @@ function dialogParent(event) {
 
 - [ ] **Step 2: Replace `dialog.showOpenDialog(win,` with `dialog.showOpenDialog(dialogParent(event),` in pick handlers (handlers already receive `event` as first arg — rename `_e` → `event` where needed).
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: `window:setTitleBarOverlay` must target sender**
+
+Today it always mutates `win`. Change to:
+
+```js
+ipcHandle('window:setTitleBarOverlay', (event, opts = {}) => {
+  const bw = dialogParent(event);
+  if (!bw || bw.isDestroyed() || typeof bw.setTitleBarOverlay !== 'function') {
+    return { ok: false };
+  }
+  try {
+    bw.setTitleBarOverlay({
+      color: opts.color || '#ffffff',
+      symbolColor: opts.symbolColor || '#303133',
+      height: 40,
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+```
+
+Same idea if `window:setAlwaysOnTop` should stay main-only — leave always-on-top on `win` only (edit windows need not pin).
+
+- [ ] **Step 4: Commit**
 
 ```bash
 git add src/main/main.js
-git commit -m "fix: parent file dialogs on invoking window"
+git commit -m "fix: parent dialogs and titleBarOverlay on invoking window"
 ```
 
 ---
@@ -366,23 +391,29 @@ git commit -m "fix: parent file dialogs on invoking window"
 - [ ] **Step 1: CSS — hide board in edit mode**
 
 ```css
+/* Real ids from index.html — do not invent #fabCreate / #clipboardQuick */
+body.edit-window #toolbar,
 body.edit-window #layout,
-body.edit-window #fabCreate,
-body.edit-window #clipboardQuick /* if present */ {
+body.edit-window #createFab {
+  display: none !important;
+}
+/* Also hide clipboard quick bar if present (class/id as in clipboardQuick.js DOM) */
+body.edit-window .clip-quick-bar,
+body.edit-window #clipQuickBar {
   display: none !important;
 }
 body.edit-window #detailOverlay {
   display: flex !important;
   position: fixed;
-  inset: 0;
+  inset: 40px 0 0 0; /* below titlebar overlay */
   /* full window; no dim click-away */
 }
 body.edit-window #detailClose {
-  display: none; /* OS chrome closes the window; or map Close → window.close() */
+  display: none; /* OS close → dirty intercept; or map to window.close() */
 }
 ```
 
-Tune against real DOM ids in `index.html` (layout root, FAB, clipboard bar — hide clipboard quick bar in edit window for v1).
+Verify clipboard node id/class in `clipboardQuick.js` when implementing; hide that node too.
 
 - [ ] **Step 2: `index.html` scripts + helpers global**
 
@@ -428,7 +459,10 @@ if (typeof window !== 'undefined') {
     }
     editing = task;
     detailState = { mode: 'edit', dataUrl: [] };
-    document.title = (helpers.editWindowTitle || ((t) => '编辑 · ' + t))(task.text);
+    const title = (helpers.editWindowTitle || ((t) => '编辑 · ' + t))(task.text);
+    document.title = title;
+    const titleEl = document.getElementById('titlebar-title');
+    if (titleEl) titleEl.textContent = title;
     const overlay = document.getElementById('detailOverlay');
     if (overlay) overlay.classList.remove('hidden');
     updateOpenDetail(); // edit chrome via detail.js (see Step 4)
@@ -448,12 +482,17 @@ if (typeof window !== 'undefined') {
         editing = fresh;
         detailState.mode = 'edit';
         updateOpenDetail();
-        document.title = helpers.editWindowTitle(fresh.text);
+        const t2 = helpers.editWindowTitle(fresh.text);
+        document.title = t2;
+        const el = document.getElementById('titlebar-title');
+        if (el) el.textContent = t2;
       });
     }
   })();
 })();
 ```
+
+Helper: `function setEditWindowTitle(text)` updates both `document.title` and `#titlebar-title`. Use after save too.
 
 - [ ] **Step 4: detail.js — edit-window-only chrome + save stay-in-edit**
 
