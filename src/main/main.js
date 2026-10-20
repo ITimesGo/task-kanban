@@ -897,8 +897,10 @@ function notifyStorageChanged() {
 
 // 置顶（系统标题栏下仅保留此窗口设置；其余窗口控制由系统原生提供）
 function setupWindowHandlers() {
-  ipcHandle('window:setAlwaysOnTop', (_e, flag) => {
-    win.setAlwaysOnTop(!!flag);
+  ipcHandle('window:setAlwaysOnTop', (event, flag) => {
+    const bw = dialogParent(event);
+    if (!bw || bw.isDestroyed()) return false;
+    bw.setAlwaysOnTop(!!flag);
     return !!flag;
   });
   ipcHandle('window:setTitleBarOverlay', (event, opts = {}) => {

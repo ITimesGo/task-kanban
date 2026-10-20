@@ -6954,10 +6954,6 @@ body.edit-window #detailModal .modal-resize {
 body.edit-window #detailClose {
   display: none !important;
 }
-body.edit-window .titlebar-pin,
-body.edit-window #pinBtn {
-  display: none !important;
-}
 
 /* 卡片：独立编辑入口 */
 .card-action-editwin {

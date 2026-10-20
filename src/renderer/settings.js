@@ -1326,15 +1326,19 @@ if (typeof API.onTasksChanged === 'function' && !window.__IS_EDIT_WINDOW__) {
 
 function initAlwaysOnTop() {
   const pinBtn = document.getElementById('pinBtn');
-  let pinned = localStorage.getItem('kanban-alwaysOnTop') === '1';
+  if (!pinBtn) return;
+  // 独立编辑窗：仅本窗会话置顶，不读写主看板的 localStorage
+  const isEditWin = !!window.__IS_EDIT_WINDOW__;
+  let pinned = isEditWin ? false : localStorage.getItem('kanban-alwaysOnTop') === '1';
   const apply = () => {
     pinBtn.classList.toggle('active', pinned);
     pinBtn.title = pinned ? '取消窗口置顶' : '窗口置顶';
+    pinBtn.setAttribute('aria-label', pinBtn.title);
     API.setAlwaysOnTop(pinned);
   };
   pinBtn.addEventListener('click', () => {
     pinned = !pinned;
-    localStorage.setItem('kanban-alwaysOnTop', pinned ? '1' : '0');
+    if (!isEditWin) localStorage.setItem('kanban-alwaysOnTop', pinned ? '1' : '0');
     apply();
   });
   apply();

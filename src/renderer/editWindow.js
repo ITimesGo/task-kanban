@@ -33,6 +33,7 @@
   (async () => {
     try {
       if (typeof initTheme === 'function') initTheme();
+      if (typeof initAlwaysOnTop === 'function') initAlwaysOnTop();
       if (typeof loadTags === 'function') await loadTags();
 
       const task = typeof API.getTask === 'function'
