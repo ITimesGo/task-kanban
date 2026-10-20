@@ -5339,25 +5339,6 @@ textarea:focus {
   gap: 6px;
   flex: 0 0 auto;
 }
-#detailModal .detail-popout-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: none;
-  border-radius: 8px;
-  background: var(--surface-muted);
-  color: var(--text-muted);
-  cursor: pointer;
-  box-sizing: border-box;
-  transition: background var(--transition), color var(--transition);
-}
-#detailModal .detail-popout-btn:hover {
-  background: var(--surface-2);
-  color: var(--primary);
-}
 #detailModal .detail-popout-btn[hidden] {
   display: none !important;
 }
@@ -5452,14 +5433,36 @@ textarea:focus {
 }
 #detailClose:hover,
 #tagClose:hover,
-#settingsClose:hover { background: var(--surface-2); color: var(--text); }
-#detailClose {
+#settingsClose:hover,
+#detailModal .detail-popout-btn:hover { background: var(--surface-2); color: var(--text); }
+/* 详情右上角：独立窗口 / 关闭 同尺寸同底色 */
+#detailClose,
+#detailModal .detail-popout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 30px;
   height: 30px;
+  padding: 0;
+  margin: 0;
+  border: none;
   background: var(--surface-muted);
   border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  box-sizing: border-box;
+  font-size: 0;
+  line-height: 0;
+  transition: all var(--transition);
 }
-#detailClose:hover { background: var(--surface-2); }
+#detailClose:hover,
+#detailModal .detail-popout-btn:hover { background: var(--surface-2); }
+#detailModal .detail-popout-btn svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
 .modal-body {
   overflow-y: auto;
   flex: 1 1 auto;
