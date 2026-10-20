@@ -30,7 +30,7 @@
 | File | Responsibility |
 |------|----------------|
 | Modify: `src/main/main.js` | `editWins` Map, `createEditWindow`, `window:openEdit`, close intercept + 3-button dialog, `notifyTasksChanged` fan-out, dialog parent fix for pickers |
-| Modify: `src/preload.js` | `openEditWindow`, `onTasksChanged`, `onEditCloseAsk` / `editCloseReply`, optional `setEditTitle` |
+| Modify: `src/preload.js` | `openEditWindow`, `onTasksChanged` (dirty close is main-side; no close-ask IPC) |
 | Modify: `src/renderer/api.js` | Mirror new preload methods onto `API` |
 | Create: `src/renderer/editWindow.js` | Detect `?edit=`, boot shell, save-stay-edit, dirty close reply, non-dirty refresh on `tasks:changed` |
 | Modify: `src/renderer/detail.js` | Export/reuse hooks for edit mount; detail footer “独立窗口” button; optional small extract of save payload helper |
@@ -342,7 +342,21 @@ function dialogParent(event) {
 }
 ```
 
-- [ ] **Step 2: Replace `dialog.showOpenDialog(win,` with `dialog.showOpenDialog(dialogParent(event),` in pick handlers (handlers already receive `event` as first arg — rename `_e` → `event` where needed).
+- [ ] **Step 2: Pick handlers currently have NO event arg** (`async () => { … showOpenDialog(win, …) }`). Change each to accept `event` and parent on the sender:
+
+```js
+// BEFORE
+ipcHandle('image:pick', async () => {
+  const res = await dialog.showOpenDialog(win, { … });
+});
+
+// AFTER
+ipcHandle('image:pick', async (event) => {
+  const res = await dialog.showOpenDialog(dialogParent(event), { … });
+});
+```
+
+Same for `media:pick` and `file:pick`. If you forget to add `(event)`, `dialogParent(event)` falls back to `win` and edit-window pickers stay wrong.
 
 - [ ] **Step 3: `window:setTitleBarOverlay` must target sender**
 
@@ -455,6 +469,7 @@ if (typeof window !== 'undefined') {
       : (await API.getAllTasks()).find((t) => String(t.id) === String(id));
     if (!task) {
       alert('任务不存在');
+      try { window.close(); } catch (_) {}
       return;
     }
     editing = task;
