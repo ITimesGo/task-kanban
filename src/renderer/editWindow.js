@@ -14,7 +14,7 @@
   window.__EDIT_TASK_ID__ = id;
 
   function setEditWindowTitle(text) {
-    const title = (helpers.editWindowTitle || ((t) => '编辑 · ' + t))(text);
+    const title = (helpers.editWindowTitle || (() => '编辑'))(text);
     document.title = title;
     const titleEl = document.getElementById('titlebar-title');
     if (titleEl) titleEl.textContent = title;

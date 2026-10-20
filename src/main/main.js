@@ -7,10 +7,21 @@ if (process.platform === 'win32') {
   app.setAppUserModelId('com.local.taskkanban');
 }
 
-// 开发模式：监听 src 目录，渲染层文件（html/css/js）变化时自动刷新窗口
+// 开发模式热重载：
+// - 主进程 / preload 变更必须整进程重启，否则 IPC handler 会停留在旧代码（如缺 dialog:dirtyOpenEdit）
+// - 仅 renderer 变更时软刷新窗口即可
+// 注意：主进程内 require('electron') 是 API 对象，硬重启须用 process.execPath
 if (!app.isPackaged) {
-  require('electron-reload')(path.join(__dirname, '..'), {
-    ignored: /node_modules|\.git/,
+  const srcRoot = path.join(__dirname, '..');
+  const hardOpts = {
+    electron: process.execPath,
+    hardResetMethod: 'exit',
+    ignored: /node_modules|\.git|[/\\]dist[/\\]/,
+  };
+  require('electron-reload')(__dirname, hardOpts);
+  require('electron-reload')(path.join(srcRoot, 'preload.js'), hardOpts);
+  require('electron-reload')(path.join(srcRoot, 'renderer'), {
+    ignored: /node_modules|\.git|[/\\]dist[/\\]/,
   });
 }
 const fs = require('fs');
@@ -972,12 +983,24 @@ function setupWindowHandlers() {
     });
     return response === 0 ? 'save' : response === 1 ? 'discard' : 'cancel';
   });
+  /** 仅聚焦已有独立编辑窗；没有则返回 focused:false（不新建） */
+  ipcHandle('window:focusEdit', (_e, taskId) => {
+    const id = String(taskId || '').trim();
+    if (!id) return { ok: false, focused: false };
+    const existing = editWins.get(id);
+    if (!existing || existing.isDestroyed()) return { ok: true, focused: false };
+    if (existing.isMinimized()) existing.restore();
+    existing.show();
+    existing.focus();
+    return { ok: true, focused: true };
+  });
   ipcHandle('window:openEdit', async (_e, taskId) => {
     const id = String(taskId || '').trim();
     if (!id) return { ok: false, error: '缺少任务 id' };
     const existing = editWins.get(id);
     if (existing && !existing.isDestroyed()) {
       if (existing.isMinimized()) existing.restore();
+      existing.show();
       existing.focus();
       return { ok: true, focused: true };
     }

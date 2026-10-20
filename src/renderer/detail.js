@@ -105,7 +105,7 @@ function setEditWindowChromeTitle(text) {
   const helpers = window.EditWindowHelpers;
   const title = helpers && helpers.editWindowTitle
     ? helpers.editWindowTitle(text)
-    : (`编辑 · ${String(text || '').slice(0, 24)}`);
+    : '编辑';
   document.title = title;
   const titleEl = document.getElementById('titlebar-title');
   if (titleEl) titleEl.textContent = title;
@@ -141,7 +141,14 @@ function updateOpenDetail() {
         <button id="editBtn" class="primary" type="button">编辑</button>
       </div>`;
     document.getElementById('toggleBtn').addEventListener('click', () => toggleStatus(editing));
-    document.getElementById('editBtn').addEventListener('click', () => {
+    document.getElementById('editBtn').addEventListener('click', async () => {
+      // 已有独立编辑窗则只聚焦，避免详情与独立窗并行编辑冲突
+      if (editing && editing.id != null && typeof API.focusEditWindow === 'function') {
+        try {
+          const r = await API.focusEditWindow(editing.id);
+          if (r && r.focused) return;
+        } catch (_) { /* 无 handler 时退回就地编辑 */ }
+      }
       detailState.mode = 'edit';
       detailState.dataUrl = [];
       updateOpenDetail();
@@ -172,10 +179,16 @@ async function openIndependentEditFromDetail(btn) {
   if (detailState && detailState.mode === 'edit' && isEditDirty()) {
     let choice = 'cancel';
     if (typeof API.dirtyOpenEditChoice === 'function') {
-      choice = await API.dirtyOpenEditChoice({
-        message: '有未保存的修改',
-        detail: '独立窗口会加载已保存的内容。可先保存草稿再打开，或不保存直接打开。',
-      });
+      try {
+        choice = await API.dirtyOpenEditChoice({
+          message: '有未保存的修改',
+          detail: '独立窗口会加载已保存的内容。可先保存草稿再打开，或不保存直接打开。',
+        });
+      } catch (_) {
+        // 主进程未热重启时可能缺 handler；退化为二选一确认
+        const ok = await showConfirm('有未保存的修改，打开独立窗口将丢失这些修改。确定继续？');
+        choice = ok ? 'discard' : 'cancel';
+      }
     } else {
       const ok = await showConfirm('有未保存的修改，打开独立窗口将丢失这些修改。确定继续？');
       choice = ok ? 'discard' : 'cancel';
@@ -677,6 +690,47 @@ const openEditWinBtnEl = document.getElementById('openEditWinBtn');
 if (openEditWinBtnEl) {
   openEditWinBtnEl.addEventListener('click', (e) => {
     openIndependentEditFromDetail(e.currentTarget);
+  });
+}
+
+/**
+ * 其它窗口保存后：若详情浮层正打开同一任务，同步内容。
+ * 就地编辑且未保存时不覆盖（与独立窗脏策略一致）。
+ */
+async function syncOpenDetailAfterTasksChanged() {
+  if (window.__IS_EDIT_WINDOW__) return;
+  if (!editing || editing.id == null) return;
+  const overlay = document.getElementById('detailOverlay');
+  if (!overlay || overlay.classList.contains('hidden')) return;
+  if (isEditDirty()) return;
+
+  const id = editing.id;
+  let fresh = null;
+  if (typeof API.getTask === 'function') {
+    try { fresh = await API.getTask(id); } catch (_) { fresh = null; }
+  }
+  if (!fresh && Array.isArray(tasks)) {
+    fresh = tasks.find((t) => t && String(t.id) === String(id)) || null;
+  }
+  if (!fresh) {
+    overlay.classList.add('hidden');
+    disposeEditEditor();
+    window._editIsDirty = null;
+    editing = null;
+    if (detailState) detailState.mode = 'view';
+    syncDetailPopoutBtn();
+    return;
+  }
+
+  const idx = Array.isArray(tasks) ? tasks.findIndex((t) => t && String(t.id) === String(id)) : -1;
+  if (idx >= 0) tasks[idx] = fresh;
+  editing = fresh;
+  updateOpenDetail();
+}
+
+if (typeof API.onTasksChanged === 'function' && !window.__IS_EDIT_WINDOW__) {
+  API.onTasksChanged(() => {
+    syncOpenDetailAfterTasksChanged().catch(() => { /* ignore */ });
   });
 }
 

@@ -1369,7 +1369,7 @@
 }
 
 /* 次级按钮：圆角矩形（非胶囊）；排除侧栏 / 关闭 / 卡片勾选 / 缩略图删除 */
-[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.media-filter-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(.ms-tag-x):not(.ms-more):not(.ms-opt-btn):not(.ms-create-row):not(#settingsClose):not(#detailClose):not(#tagClose):not(.check):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-collapse-btn):not(.create-fab):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del):not(.doc-media-zoom):not(.media-ctx-item),
+[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.media-filter-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(.ms-tag-x):not(.ms-more):not(.ms-opt-btn):not(.ms-create-row):not(#settingsClose):not(#detailClose):not(#tagClose):not(#openEditWinBtn):not(.detail-popout-btn):not(.check):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-collapse-btn):not(.create-fab):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del):not(.doc-media-zoom):not(.media-ctx-item),
 [data-skin="apple"] .filters-toggle,
 [data-skin="apple"] #settingsBtn,
 [data-skin="apple"] .icon-btn,
@@ -1418,7 +1418,7 @@
   width: 16px;
   height: 16px;
 }
-[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.media-filter-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(.ms-tag-x):not(.ms-more):not(.ms-opt-btn):not(.ms-create-row):not(#settingsClose):not(#detailClose):not(#tagClose):not(.check):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-collapse-btn):not(.create-fab):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del):not(.doc-media-zoom):not(.media-ctx-item):hover,
+[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.media-filter-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(.ms-tag-x):not(.ms-more):not(.ms-opt-btn):not(.ms-create-row):not(#settingsClose):not(#detailClose):not(#tagClose):not(#openEditWinBtn):not(.detail-popout-btn):not(.check):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-collapse-btn):not(.create-fab):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del):not(.doc-media-zoom):not(.media-ctx-item):hover,
 [data-skin="apple"] .filters-toggle:hover,
 [data-skin="apple"] #settingsBtn:hover,
 [data-skin="apple"] .icon-btn:hover,
@@ -2048,42 +2048,43 @@
 [data-skin="apple"] #settingsClose,
 [data-skin="apple"] #detailClose,
 [data-skin="apple"] #tagClose,
-[data-skin="apple"] #detailModal .detail-popout-btn {
-  display: inline-flex;
+[data-skin="apple"] #detailModal .detail-popout-btn,
+[data-skin="apple"] #openEditWinBtn {
+  display: inline-flex !important;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  padding: 0 !important;
   margin: 0;
-  border: none;
-  border-radius: 999px;
-  background: rgba(118, 118, 128, 0.16);
-  color: #3a3a3c;
-  font-size: 0;
-  line-height: 0;
+  border: none !important;
+  border-radius: 999px !important;
+  background: rgba(118, 118, 128, 0.16) !important;
+  color: #3a3a3c !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
   box-sizing: border-box;
+  box-shadow: none !important;
 }
 [data-skin="apple"] #settingsClose svg,
 [data-skin="apple"] #detailClose svg,
-[data-skin="apple"] #tagClose svg,
-[data-skin="apple"] #detailModal .detail-popout-btn svg {
+[data-skin="apple"] #tagClose svg {
   width: 11px;
   height: 11px;
 }
-[data-skin="apple"] #detailModal .detail-popout-btn svg {
-  width: 14px;
-  height: 14px;
+[data-skin="apple"] #detailModal .detail-popout-btn svg,
+[data-skin="apple"] #openEditWinBtn svg {
+  width: 13px !important;
+  height: 13px !important;
 }
 [data-skin="apple"] #settingsClose:hover,
 [data-skin="apple"] #detailClose:hover,
 [data-skin="apple"] #tagClose:hover,
-[data-skin="apple"] #detailModal .detail-popout-btn:hover {
-  background: rgba(118, 118, 128, 0.28);
-  color: #1d1d1f;
-}
-[data-skin="apple"] #detailModal .detail-popout-btn:hover {
-  color: var(--primary);
+[data-skin="apple"] #detailModal .detail-popout-btn:hover,
+[data-skin="apple"] #openEditWinBtn:hover {
+  background: rgba(118, 118, 128, 0.28) !important;
+  color: #1d1d1f !important;
 }
 
 [data-skin="apple"] .meta-chip {
@@ -5435,14 +5436,16 @@ textarea:focus {
 #tagClose:hover,
 #settingsClose:hover,
 #detailModal .detail-popout-btn:hover { background: var(--surface-2); color: var(--text); }
-/* 详情右上角：独立窗口 / 关闭 同尺寸同底色 */
+/* 详情右上角：独立窗口 / 关闭 同尺寸同圆角同底色 */
 #detailClose,
-#detailModal .detail-popout-btn {
+#detailModal .detail-popout-btn,
+#openEditWinBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 30px;
   height: 30px;
+  min-width: 30px;
   padding: 0;
   margin: 0;
   border: none;
@@ -5456,8 +5459,10 @@ textarea:focus {
   transition: all var(--transition);
 }
 #detailClose:hover,
-#detailModal .detail-popout-btn:hover { background: var(--surface-2); }
-#detailModal .detail-popout-btn svg {
+#detailModal .detail-popout-btn:hover,
+#openEditWinBtn:hover { background: var(--surface-2); color: var(--text); }
+#detailModal .detail-popout-btn svg,
+#openEditWinBtn svg {
   display: block;
   width: 14px;
   height: 14px;
@@ -6092,6 +6097,24 @@ textarea:focus {
   line-height: 1.2 !important;
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18) !important;
+}
+#lightboxCloseBtn.lightbox-close-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  padding: 0 !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  border-radius: 999px !important;
+}
+#lightboxCloseBtn.lightbox-close-btn svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
 }
 .lightbox-tool-btn:hover:not(:disabled) {
   background: #f3f4f6 !important;
@@ -7055,11 +7078,10 @@ body.edit-window #editDrop .edit-side {
 .card-action-editwin.is-loading,
 .card:hover .card-action-editwin.is-loading,
 .card:focus-within .card-action-editwin.is-loading,
-#openEditWinBtn.icon-btn.is-loading {
+#openEditWinBtn.is-loading {
   pointer-events: none;
   opacity: 1 !important;
   color: var(--primary);
-  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
 }
 .editwin-spin-ico {
   display: block;
@@ -7067,12 +7089,4 @@ body.edit-window #editDrop .edit-side {
 }
 @keyframes editwin-spin {
   to { transform: rotate(360deg); }
-}
-#openEditWinBtn.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
 }

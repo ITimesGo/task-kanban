@@ -13,10 +13,10 @@ test('parseEditTaskIdFromSearch reads edit param', () => {
   assert.equal(parseEditTaskIdFromSearch('?edit='), null);
 });
 
-test('editWindowTitle truncates', () => {
-  assert.equal(editWindowTitle('短'), '编辑 · 短');
-  assert.match(editWindowTitle('一二三四五六七八九十一二三四五六七八九十超长'), /^编辑 · /);
-  assert.ok(editWindowTitle('一二三四五六七八九十一二三四五六七八九十超长').length < 40);
+test('editWindowTitle is fixed label', () => {
+  assert.equal(editWindowTitle('短'), '编辑');
+  assert.equal(editWindowTitle('一二三四五六七八九十一二三四五六七八九十超长'), '编辑');
+  assert.equal(editWindowTitle(''), '编辑');
 });
 
 test('resolveDirtyCloseAction maps dialog response', () => {

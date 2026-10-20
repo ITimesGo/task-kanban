@@ -5,10 +5,8 @@ function parseEditTaskIdFromSearch(search) {
   return id || null;
 }
 
-function editWindowTitle(text) {
-  const raw = String(text || '').replace(/\s+/g, ' ').trim() || '未命名';
-  const slice = raw.length > 24 ? raw.slice(0, 24) + '…' : raw;
-  return `编辑 · ${slice}`;
+function editWindowTitle(_text) {
+  return '编辑';
 }
 
 function resolveDirtyCloseAction({ dirty, response }) {
