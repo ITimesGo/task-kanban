@@ -616,7 +616,7 @@
     0 4px 18px rgba(15, 40, 80, 0.06);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  padding-right: calc(var(--card-ctrl-inset) + var(--card-ctrl-w) + 8px);
+  padding-right: calc(var(--card-ctrl-inset) + var(--card-ctrl-w) * 2 + 14px);
   margin-bottom: 10px;
   transform: none;
   transition:
@@ -4141,12 +4141,13 @@ button.rich-tb.is-active,
   background: rgba(0, 0, 0, 0.62) !important;
   color: #ffffff !important;
   border: none !important;
-  border-radius: 13px !important;
-  width: 26px !important;
-  height: 26px !important;
-  min-width: 26px !important;
   padding: 0 !important;
   box-shadow: none !important;
+  border-radius: 50% !important;
+  display: grid !important;
+  place-items: center !important;
+  line-height: 0 !important;
+  font-size: 0 !important;
 }
 .rich-surface {
   position: relative;
@@ -4204,12 +4205,15 @@ button.rich-tb.is-active,
 /* 新建/编辑：figure 贴合图片实际尺寸，选中框不拉满整行 */
 .rich-surface .doc-media {
   display: block;
+  position: relative;
   width: fit-content;
   max-width: 100%;
   margin: 8px 0;
   cursor: grab;
   -webkit-user-drag: none;
   user-select: none;
+  /* 勿用 container-type:size：会尺寸包含，figure 缩成一条，icon 贴错边 */
+  overflow: visible;
 }
 .rich-surface .doc-media.is-dragging {
   opacity: 0.42;
@@ -4270,7 +4274,7 @@ body.is-media-resizing {
 }
 .rich-surface .doc-media.is-selected {
   outline: 2px solid var(--primary);
-  outline-offset: 2px;
+  outline-offset: 0;
   border-radius: 8px;
 }
 .doc-media-chrome {
@@ -4279,51 +4283,53 @@ body.is-media-resizing {
   pointer-events: none;
   z-index: 2;
 }
-/* 右上角一列：统一 26px 圆钮 + SVG 居中 */
+/* 右上角工具条：永远横排贴在图内，矮图不再把删除顶到框外 */
+.rich-surface .doc-media-actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 3;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.rich-surface .doc-media:hover .doc-media-actions,
+.rich-surface .doc-media.is-selected .doc-media-actions,
+.rich-surface .doc-media-actions:focus-within {
+  opacity: 1;
+}
 .rich-surface .doc-media-zoom,
 .rich-surface .doc-media-del {
   pointer-events: auto;
-  position: absolute;
-  right: 4px;
-  z-index: 3;
+  position: static;
+  top: auto;
+  right: auto;
   box-sizing: border-box;
   width: 26px;
   height: 26px;
   min-width: 26px;
   min-height: 26px;
   border: none;
-  border-radius: 13px;
+  border-radius: 50%;
   background: rgba(0, 0, 0, 0.62);
   color: #fff;
   padding: 0;
   margin: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   line-height: 0;
   font-size: 0;
+  flex: 0 0 auto;
+  overflow: hidden;
+  -webkit-appearance: none;
+  appearance: none;
 }
-.rich-surface .doc-media-zoom {
-  top: 4px;
-  cursor: zoom-in;
-}
-.rich-surface .doc-media-del {
-  top: 34px; /* 26 + 4 间距 */
-  cursor: pointer;
-}
-.rich-surface .doc-media-zoom,
-.rich-surface .doc-media-del {
-  opacity: 0;
-  transition: opacity 0.15s ease, background 0.15s ease;
-}
-.rich-surface .doc-media:hover .doc-media-zoom,
-.rich-surface .doc-media:hover .doc-media-del,
-.rich-surface .doc-media.is-selected .doc-media-zoom,
-.rich-surface .doc-media.is-selected .doc-media-del,
-.rich-surface .doc-media-zoom:focus-visible,
-.rich-surface .doc-media-del:focus-visible {
-  opacity: 1;
-}
+.rich-surface .doc-media-zoom { cursor: zoom-in; }
+.rich-surface .doc-media-del { cursor: pointer; }
 .rich-surface .doc-media-zoom:hover { background: rgba(0, 0, 0, 0.78); }
 .rich-surface .doc-media-del:hover { background: #ff3b30; }
 .rich-surface .doc-media-zoom svg,
@@ -4331,11 +4337,41 @@ body.is-media-resizing {
   display: block;
   width: 14px;
   height: 14px;
-  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  flex: none;
+  overflow: visible;
+}
+/* 很矮：缩小圆钮，仍横排贴右上 */
+.rich-surface .doc-media.is-media-compact .doc-media-actions {
+  top: 2px;
+  right: 2px;
+  gap: 3px;
+}
+.rich-surface .doc-media.is-media-compact .doc-media-zoom,
+.rich-surface .doc-media.is-media-compact .doc-media-del {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  border-radius: 50%;
+}
+.rich-surface .doc-media.is-media-compact .doc-media-zoom svg,
+.rich-surface .doc-media.is-media-compact .doc-media-del svg {
+  width: 10px;
+  height: 10px;
+}
+/* 窄图：竖排保留放大镜+删除，水平居中 */
+.rich-surface .doc-media.is-media-narrow .doc-media-actions {
+  flex-direction: column;
+  top: 2px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  gap: 3px;
 }
 @media (prefers-reduced-motion: reduce) {
-  .rich-surface .doc-media-zoom,
-  .rich-surface .doc-media-del { transition: none; }
+  .rich-surface .doc-media-actions { transition: none; }
 }
 .doc-resize {
   pointer-events: auto;
@@ -4493,7 +4529,7 @@ body.is-media-resizing {
   border: none;
   border-radius: var(--radius);
   padding: 14px 16px;
-  padding-right: calc(var(--card-ctrl-inset) + var(--card-ctrl-w) + 8px);
+  padding-right: calc(var(--card-ctrl-inset) + var(--card-ctrl-w) * 2 + 14px);
   margin-bottom: 10px;
   overflow: visible;
   cursor: pointer;
@@ -4748,10 +4784,28 @@ body.is-media-resizing {
     color 0.22s ease,
     box-shadow 0.22s ease;
 }
-/* 右上：矮胶囊状态钮 */
-.card-action {
+/* 右上：动作组（独立编辑 + 完成勾选并排，避免叠压） */
+.card-actions {
+  position: absolute;
+  z-index: 2;
   top: var(--card-ctrl-inset);
   right: var(--card-ctrl-inset);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.card:hover .card-actions,
+.card:focus-within .card-actions,
+.card-actions:has(.card-action.is-countdown) {
+  pointer-events: auto;
+}
+/* 右上：矮胶囊状态钮（组内不再各自 absolute） */
+.card-action {
+  position: relative;
+  top: auto;
+  right: auto;
   width: var(--card-ctrl-w);
   min-width: var(--card-ctrl-w);
   max-width: var(--card-ctrl-w);
@@ -4763,6 +4817,7 @@ body.is-media-resizing {
   background: color-mix(in srgb, var(--status-go) 18%, var(--surface, #fff));
   box-shadow: 0 1px 3px rgba(15, 24, 40, 0.06);
   color: var(--status-go);
+  flex: 0 0 auto;
 }
 /* 右下：小号圆形勾选，与日期同一行垂直居中 */
 .card .card-pick {
@@ -6889,12 +6944,8 @@ body.edit-window #pinBtn {
   display: none !important;
 }
 
-/* 卡片：独立编辑入口（toggle 左侧） */
-.card {
-  padding-right: calc(var(--card-ctrl-inset) + var(--card-ctrl-w) * 2 + 14px);
-}
+/* 卡片：独立编辑入口 */
 .card-action-editwin {
-  right: calc(var(--card-ctrl-inset) + var(--card-ctrl-w) + 6px);
   border-color: color-mix(in srgb, var(--text-muted, #909399) 45%, var(--border));
   background: color-mix(in srgb, var(--surface, #fff) 92%, var(--text-muted, #909399));
   color: var(--text-muted, #606266);
@@ -6902,11 +6953,7 @@ body.edit-window #pinBtn {
 .card-action-editwin:hover {
   border-color: var(--primary);
   color: var(--primary);
-}
-.card:hover .card-action-editwin,
-.card:focus-within .card-action-editwin {
-  opacity: 1;
-  pointer-events: auto;
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface, #fff));
 }
 #openEditWinBtn.icon-btn {
   display: inline-flex;
