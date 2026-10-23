@@ -9,8 +9,24 @@ const ui = (() => {
   /** @type {Map<string, { gen: number, toDone: boolean, endsAt: number, raf: number|null, width: number, onUndo: Function, onCommit: Function }>} */
   const pendingUndoById = new Map();
   let statusUndoGen = 0;
+  /** 本地点状态后、撤销倒计时/离场动画结束前，挡住 tasks:changed 触发的全量 refresh */
+  const statusAnimHoldIds = new Set();
 
   function setTagMap(map) { tagMap = map || {}; }
+
+  function holdStatusAnim(id) {
+    if (id == null) return;
+    statusAnimHoldIds.add(String(id));
+  }
+
+  function releaseStatusAnim(id) {
+    if (id == null) return;
+    statusAnimHoldIds.delete(String(id));
+  }
+
+  function shouldDeferTasksRefresh() {
+    return statusAnimHoldIds.size > 0 || pendingUndoById.size > 0;
+  }
 
   function abandonCardStatusUndo(id) {
     const key = String(id);
@@ -81,12 +97,17 @@ const ui = (() => {
       return;
     }
 
-    // 书签固定尺寸，不清宽度锁；只清旧监听
+    // 书签固定尺寸，不清宽度锁；只清旧监听。替换焦点钮前先 blur，并锁住列表滚动，避免跳顶
+    const scrollTop = listScrollEl() ? listScrollEl().scrollTop : 0;
+    if (document.activeElement === btn) {
+      try { btn.blur(); } catch (_) { /* ignore */ }
+    }
     const cleanBtn = btn.cloneNode(false);
     cleanBtn.type = 'button';
     cleanBtn.setAttribute('data-action', 'toggle');
     cleanBtn.className = btn.className;
     btn.replaceWith(cleanBtn);
+    restoreListScroll(scrollTop);
     const actionBtn = cleanBtn;
 
     const toDone = task.status === 'done';
@@ -334,9 +355,13 @@ const ui = (() => {
         const card = openEdit.closest('.card');
         const id = card && card.dataset.taskId;
         const t = id != null ? h.taskById.get(String(id)) : null;
-        if (t && typeof API.openEditWindowFromButton === 'function') {
+        if (!t) return;
+        // 与详情弹出共用脏检查，避免就地编辑未保存时双开覆盖
+        if (typeof window.openIndependentEditForTask === 'function') {
+          window.openIndependentEditForTask(t.id, openEdit);
+        } else if (typeof API.openEditWindowFromButton === 'function') {
           API.openEditWindowFromButton(openEdit, t.id);
-        } else if (t && typeof API.openEditWindow === 'function') {
+        } else if (typeof API.openEditWindow === 'function') {
           API.openEditWindow(t.id);
         }
         return;
@@ -434,6 +459,40 @@ const ui = (() => {
     return card;
   }
 
+  function listScrollEl() {
+    return document.getElementById('listScroll');
+  }
+
+  function restoreListScroll(top) {
+    const el = listScrollEl();
+    if (el) el.scrollTop = top;
+  }
+
+  /** 就地刷新卡片勾选外观，避免 renderCards 导致滚动复位 */
+  function paintCardsSelectionChrome(selectedIds) {
+    const selected = selectedIds instanceof Set ? selectedIds : new Set();
+    const hasSelection = selected.size > 0;
+    document.querySelectorAll('#cards .card[data-task-id]').forEach((card) => {
+      const id = String(card.getAttribute('data-task-id') || '');
+      const on = selected.has(id);
+      card.classList.toggle('is-selected', on);
+      card.classList.toggle('select-mode', hasSelection);
+      const pick = card.querySelector('.card-pick');
+      if (!pick) return;
+      pick.classList.toggle('on', on);
+      pick.setAttribute('aria-pressed', on ? 'true' : 'false');
+      pick.title = on ? '取消勾选' : '勾选';
+      pick.setAttribute('aria-label', on ? '取消勾选' : '勾选');
+      const ring = pick.querySelector('.card-pick-ring');
+      if (!ring) return;
+      if (on) {
+        if (!ring.querySelector('.card-check-ico')) ring.innerHTML = CHECK_ICO;
+      } else if (ring.innerHTML) {
+        ring.innerHTML = '';
+      }
+    });
+  }
+
   function renderCards(taskList, {
     onQuickToggle,
     onOpen,
@@ -447,6 +506,8 @@ const ui = (() => {
     ensureCardsMediaMenu();
     ensureCardsClickDelegation();
     const token = ++cardsRenderToken;
+    const scrollEl = listScrollEl();
+    const scrollTop = scrollEl ? scrollEl.scrollTop : 0;
     const taskById = new Map();
     for (const t of taskList || []) {
       if (t && t.id != null) taskById.set(String(t.id), t);
@@ -455,6 +516,7 @@ const ui = (() => {
     cardsEl.innerHTML = '';
     if (!taskList.length) {
       cardsEl.innerHTML = `<p class="empty">${esc(emptyText || '暂无任务')}</p>`;
+      restoreListScroll(scrollTop);
       return;
     }
     const selected = selectedIds instanceof Set ? selectedIds : null;
@@ -467,6 +529,7 @@ const ui = (() => {
       const end = Math.min(i + size, taskList.length);
       for (; i < end; i++) frag.appendChild(buildCardEl(taskList[i], opts));
       cardsEl.appendChild(frag);
+      restoreListScroll(scrollTop);
       return i < taskList.length;
     };
     // 先画一小截（同步），交互立刻有反馈；后面的卡按帧续画
@@ -1166,5 +1229,30 @@ const ui = (() => {
     });
   }
 
-  return { esc, fmtTime, renderCards, renderNewThumbs, renderDetail, renderTagFilter, renderManageableTagFilter, renderTagSelected, renderTagSelectedRemovable, setTagMap, detailBody, detailActions, thumbsEl, drawOptions, drawManageableTagOptions, animateCardOut, beginCardStatusUndo, ATT_ICON, CLOSE_ICON };
+  return {
+    esc,
+    fmtTime,
+    renderCards,
+    renderNewThumbs,
+    renderDetail,
+    renderTagFilter,
+    renderManageableTagFilter,
+    renderTagSelected,
+    renderTagSelectedRemovable,
+    setTagMap,
+    detailBody,
+    detailActions,
+    thumbsEl,
+    drawOptions,
+    drawManageableTagOptions,
+    animateCardOut,
+    beginCardStatusUndo,
+    resetToggleButton,
+    holdStatusAnim,
+    releaseStatusAnim,
+    shouldDeferTasksRefresh,
+    paintCardsSelectionChrome,
+    ATT_ICON,
+    CLOSE_ICON,
+  };
 })();

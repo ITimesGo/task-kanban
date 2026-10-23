@@ -9,8 +9,11 @@ function editWindowTitle(_text) {
   return '编辑';
 }
 
-function resolveDirtyCloseAction({ dirty, response }) {
+/** @param {{ dirty: boolean, action?: string, response?: number }} opts */
+function resolveDirtyCloseAction({ dirty, action, response }) {
   if (!dirty) return 'close';
+  if (action === 'save' || action === 'discard' || action === 'cancel') return action;
+  // 兼容旧 MessageBox 下标
   if (response === 0) return 'save';
   if (response === 1) return 'discard';
   return 'cancel';

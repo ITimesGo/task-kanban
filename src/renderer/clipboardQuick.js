@@ -207,6 +207,12 @@
   }
 
   function showBar(payload) {
+    if (!payload) return;
+    if (payload.type === 'text') {
+      const preview = String(payload.preview || payload.text || '').trim();
+      if (!preview) return;
+      payload = { ...payload, preview };
+    }
     pending = payload;
     thumbLoading = false;
     thumbToken += 1;
@@ -215,33 +221,36 @@
     const thumb = thumbEl();
     if (!el || !t) return;
     if (payload.type === 'image') {
+      syncTargetLabel();
       if (payload.dataUrl) {
         paintThumb(payload.dataUrl);
       } else if (thumb) {
-        // 只出占位，不 readImage——切回前台有大图时否则会卡死几十秒
+        // 只出图位，不 readImage——切回前台有大图时否则会卡死几十秒
         paintThumb('', { loading: false });
         thumb.title = '悬停加载预览，点击看原图';
       }
     } else {
-      t.textContent = `剪贴板：${payload.preview || '新文字'}`;
+      // 先写真实预览再亮条，避免默认空文案或旧文案闪一帧
+      t.textContent = `剪贴板：${payload.preview}`;
       if (thumb) {
         thumb.hidden = true;
         thumb.removeAttribute('src');
         thumb.classList.remove('is-loading');
       }
+      const btn = document.getElementById('clipQuickApply');
+      if (btn) btn.textContent = isEditTarget() ? '填入编辑' : '填入新建';
     }
-    syncTargetLabel();
     el.classList.remove('hidden');
     scheduleAutoHide();
   }
 
   function scheduleResumePoll() {
     if (resumeTimer) clearTimeout(resumeTimer);
-    // 等窗口真正画完再轻量 probe；绝不在这里 readImage
+    // 等合成层轻载门结束再 probe；绝不在这里 readImage / readText
     resumeTimer = window.setTimeout(() => {
       resumeTimer = 0;
       if (enabled) poll({ resume: true });
-    }, 400);
+    }, 900);
   }
 
   /**
@@ -291,21 +300,26 @@
       lastSig = res.sig;
 
       if (res.type === 'image') {
-        // 只弹条 + 占位；缩略图等用户悬停再 readImage（resume/轮询都一样）
+        // 只弹条；缩略图等用户悬停再 readImage（resume/轮询都一样）
         showBar({
           type: 'image',
           sig: res.sig,
           light: true,
           previewOnly: true,
+          needsContent: true,
         });
         return;
       }
       if (res.type === 'text') {
+        // probe 已带预览正文，直接展示，避免先占位再换字
+        const preview = String(res.preview || '').trim();
+        if (!preview) return;
         showBar({
           type: 'text',
           sig: res.sig,
-          preview: res.preview,
-          text: res.text,
+          preview,
+          text: res.text || '',
+          needsContent: !!(res.needsContent || !res.text),
         });
       }
     } catch (_) {
@@ -315,10 +329,25 @@
     }
   }
 
-  /** 填入/放大：始终要原图（缩略图 previewOnly=true 不能直接用） */
+  /** 填入/放大：需要完整内容时再 peek（probe 路径不带正文/原图） */
   async function resolvePayloadForApply(payload) {
     if (!payload) return payload;
-    if (payload.type === 'text') return payload;
+    if (payload.type === 'text') {
+      if (payload.text && !payload.needsContent) return payload;
+      try {
+        const full = await API.clipboardPeek({ withData: true });
+        if (full && full.ok && full.type === 'text' && full.text) {
+          return {
+            ...payload,
+            text: full.text,
+            preview: full.preview || payload.preview,
+            needsContent: false,
+            sig: full.sig || payload.sig,
+          };
+        }
+      } catch (_) { /* ignore */ }
+      return payload;
+    }
     if (payload.type !== 'image') return payload;
     if (payload.previewOnly === false && payload.dataUrl) return payload;
     try {
@@ -328,6 +357,7 @@
           ...payload,
           dataUrl: full.dataUrl,
           previewOnly: false,
+          needsContent: false,
           sig: full.sig || payload.sig,
         };
       }

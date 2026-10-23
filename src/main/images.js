@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const ALLOWED = new Set(['jpg', 'jpeg', 'png', 'bmp']);
+const ALLOWED = new Set(['jpg', 'jpeg', 'png', 'bmp', 'gif', 'webp']);
 const MAX_BYTES = 10 * 1024 * 1024; // 10MB
 
 function extOf(absPath) {
@@ -10,7 +10,7 @@ function extOf(absPath) {
 
 function mimeOfExt(ext) {
   if (ext === 'jpg') return 'jpeg';
-  return ext; // png / bmp
+  return ext; // png / bmp / gif / webp
 }
 
 /** 校验本地图片路径（不读入内存为 base64），通过则返回绝对路径 */
@@ -19,7 +19,7 @@ function assertImageFile(absPath) {
     throw new Error('图片文件不存在');
   }
   const ext = extOf(absPath);
-  if (!ALLOWED.has(ext)) throw new Error('不支持的文件类型，仅支持 jpg/png/bmp');
+  if (!ALLOWED.has(ext)) throw new Error('不支持的文件类型，仅支持 jpg/png/bmp/gif/webp');
   const stat = fs.statSync(absPath);
   if (!stat.isFile()) throw new Error('无效的图片路径');
   if (stat.size > MAX_BYTES) throw new Error('图片超过 10MB 限制');

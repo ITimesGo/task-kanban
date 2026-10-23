@@ -38,11 +38,11 @@ function extractPlainText(doc) {
       parts.push('\n');
       return;
     }
-    if (node.type === 'listItem') {
+    if (node.type === 'listItem' || node.type === 'taskItem') {
       for (const c of kids) walk(c, depthList);
       return;
     }
-    if (node.type === 'bulletList' || node.type === 'orderedList') {
+    if (node.type === 'bulletList' || node.type === 'orderedList' || node.type === 'taskList') {
       for (const c of kids) walk(c, depthList);
       return;
     }

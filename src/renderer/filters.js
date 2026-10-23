@@ -120,6 +120,14 @@ function stripSelectionChrome() {
   });
 }
 
+function paintSelectionChrome() {
+  if (typeof ui !== 'undefined' && ui && typeof ui.paintCardsSelectionChrome === 'function') {
+    ui.paintCardsSelectionChrome(selectedTaskIds);
+    return;
+  }
+  stripSelectionChrome();
+}
+
 /** 清空勾选；render=false 时只改状态并去掉卡片勾选样式，交给随后的 refresh 重绘 */
 function clearSelection({ render = true } = {}) {
   if (!selectedTaskIds.size) {
@@ -128,7 +136,7 @@ function clearSelection({ render = true } = {}) {
   }
   selectedTaskIds.clear();
   syncSelectionUI();
-  if (render) renderFilteredPage();
+  if (render) paintSelectionChrome();
   else stripSelectionChrome();
 }
 
@@ -147,7 +155,7 @@ function selectAllFiltered() {
     for (const id of ids) selectedTaskIds.add(id);
   }
   syncSelectionUI();
-  renderFilteredPage();
+  paintSelectionChrome();
 }
 
 let selectionBarHideTimer = 0;
@@ -167,7 +175,6 @@ function showSelectionBar(bar) {
     clearTimeout(selectionBarHideTimer);
     selectionBarHideTimer = 0;
   }
-  // 先挂到 DOM（高度仍为 0），再开格行，避免列表被瞬间顶开
   bar.removeAttribute('hidden');
   slot.classList.remove('is-leaving');
   slot.setAttribute('aria-hidden', 'false');
@@ -176,6 +183,7 @@ function showSelectionBar(bar) {
     slot.classList.add('is-open');
     return;
   }
+  // 浮层不占文档流高度；仅做透明度过渡，避免顶开列表
   void slot.offsetHeight;
   requestAnimationFrame(() => {
     if (selectedTaskIds.size) slot.classList.add('is-open');
@@ -235,7 +243,7 @@ function toggleTaskSelect(t) {
   if (selectedTaskIds.has(id)) selectedTaskIds.delete(id);
   else selectedTaskIds.add(id);
   syncSelectionUI();
-  renderFilteredPage();
+  paintSelectionChrome();
 }
 
 function exportTaskIdsForFormat() {

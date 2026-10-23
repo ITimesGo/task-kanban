@@ -414,6 +414,33 @@ bindContentPaste({
   maxMb: MAX_IMG_MB,
 });
 
+/** 写入新建编辑器正文：空编辑器直接落 DOM，避免先露出 placeholder 再插入 */
+function fillCreateEditorText(chunk) {
+  if (!createEditor || !createEditor.surface) return false;
+  const surface = createEditor.surface;
+  const text = String(chunk || '');
+  if (!text) return false;
+  const blank = !(surface.textContent || '').trim();
+  if (blank) {
+    const esc = (s) => String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    const html = text.split(/\n/).map((line) => (
+      line ? `<p>${esc(line)}</p>` : '<p><br></p>'
+    )).join('');
+    surface.innerHTML = html || '<p><br></p>';
+    try {
+      surface.dispatchEvent(new Event('input', { bubbles: true }));
+    } catch (_) { /* ignore */ }
+  } else {
+    surface.focus();
+    try { document.execCommand('insertText', false, text); }
+    catch (_) { surface.appendChild(document.createTextNode(text)); }
+  }
+  return true;
+}
+
 window.applyClipboardQuick = (payload) => {
   if (!payload || !payload.type) return false;
   const overlay = document.getElementById('detailOverlay');
@@ -424,22 +451,19 @@ window.applyClipboardQuick = (payload) => {
   if (editOpen) {
     return window.applyClipboardToEdit(payload);
   }
-  // 收起为加号时：先展开新建区，再填入并聚焦
-  if (typeof window.ensureCreatePanelOpen === 'function') {
-    window.ensureCreatePanelOpen({ animate: true, focus: true });
-  }
   if (payload.type === 'text') {
-    if (!createEditor || !createEditor.surface) return false;
     const chunk = String(payload.text || '');
     if (!chunk) return false;
-    // 立刻聚焦以便 insertText；面板展开动画结束后 ensureCreatePanelOpen 还会再聚焦一次
-    createEditor.surface.focus();
-    try { document.execCommand('insertText', false, chunk); }
-    catch (_) {
-      createEditor.surface.appendChild(document.createTextNode(chunk));
-    }
+    // 先写入正文，再展开面板，避免展开瞬间露出「输入任务描述…」占位
+    if (!fillCreateEditorText(chunk)) return false;
     updateCreateBtnState();
+    if (typeof window.ensureCreatePanelOpen === 'function') {
+      window.ensureCreatePanelOpen({ animate: true, focus: true });
+    }
   } else if (payload.type === 'image' && payload.dataUrl) {
+    if (typeof window.ensureCreatePanelOpen === 'function') {
+      window.ensureCreatePanelOpen({ animate: true, focus: true });
+    }
     if (!addImageToCreate(payload.dataUrl)) return false;
     updateCreateBtnState();
   } else {

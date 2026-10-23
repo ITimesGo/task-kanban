@@ -420,12 +420,12 @@
   </div>
 
   <div id="confirmOverlay" class="overlay hidden">
-    <div class="modal confirm-modal">
-      <h2 class="confirm-title">确认操作</h2>
+    <div class="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <h2 id="confirmTitle" class="confirm-title">确认操作</h2>
       <p id="confirmText" class="confirm-text"></p>
-      <div class="confirm-actions">
-        <button id="confirmCancel">取消</button>
-        <button id="confirmOk" class="danger">确认</button>
+      <div id="confirmActions" class="confirm-actions">
+        <button type="button" id="confirmCancel">取消</button>
+        <button type="button" id="confirmOk" class="danger">确认</button>
       </div>
     </div>
   </div>
@@ -433,7 +433,7 @@
   <div id="clipQuickBar" class="clip-quick-bar hidden" role="status" aria-live="polite">
     <div class="clip-quick-main">
       <img id="clipQuickThumb" class="clip-quick-thumb" alt="" hidden>
-      <span id="clipQuickText" class="clip-quick-text">剪贴板有新内容</span>
+      <span id="clipQuickText" class="clip-quick-text"></span>
       <div class="clip-quick-actions">
         <button type="button" id="clipQuickApply" class="clip-quick-apply">填入新建</button>
         <button type="button" id="clipQuickDismiss" class="clip-quick-dismiss" title="忽略" aria-label="忽略">
@@ -446,6 +446,7 @@
     </div>
   </div>
 
+  <script src="resumeSmooth.js"></script>
   <script src="taskMedia.js"></script>
   <script src="taskDoc.js"></script>
   <script src="mediaFig.js"></script>

@@ -16,7 +16,6 @@ window.API.onStorageChanged = (cb) => window.taskAPI.onStorageChanged(cb);
 window.API.onTasksChanged = (cb) => window.taskAPI.onTasksChanged(cb);
 window.API.openEditWindow = (taskId) => window.taskAPI.openEditWindow(taskId);
 window.API.focusEditWindow = (taskId) => window.taskAPI.focusEditWindow(taskId);
-window.API.dirtyOpenEditChoice = (opts) => window.taskAPI.dirtyOpenEditChoice(opts);
 
 /** 入口 icon 转 loading，直到独立编辑窗显示（或失败） */
 window.API.openEditWindowFromButton = async (btn, taskId) => {

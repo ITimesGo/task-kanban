@@ -24,8 +24,15 @@
     editing = task;
     detailState = { mode: 'edit', dataUrl: [] };
     setEditWindowTitle(task.text);
-    const overlay = document.getElementById('detailOverlay');
-    if (overlay) overlay.classList.remove('hidden');
+    if (typeof showDetailOverlay === 'function') {
+      showDetailOverlay();
+    } else {
+      const overlay = document.getElementById('detailOverlay');
+      if (overlay) {
+        overlay.classList.remove('hidden');
+        overlay.classList.add('is-open');
+      }
+    }
     if (typeof updateOpenDetail === 'function') updateOpenDetail();
   }
 
@@ -37,6 +44,14 @@
       return !!(await window.saveCurrentEdit());
     }
     return false;
+  };
+
+  /** 主进程关窗前调用：与详情弹窗同一套自定义三选一 */
+  window.__editWindowAskDirtyClose = async () => {
+    if (typeof showDirtyConfirm !== 'function') return 'cancel';
+    return showDirtyConfirm({
+      detail: '保存后关闭，或不保存丢弃更改。',
+    });
   };
 
   (async () => {
@@ -63,12 +78,16 @@
 
       if (typeof API.onTasksChanged === 'function') {
         API.onTasksChanged(async () => {
+          // 本窗刚保存：短时跳过 remount，避免打回滚动/冲掉保存气泡
+          if (Date.now() < (window.__editWindowSkipRemountUntil || 0)) return;
           if (window.__editWindowIsDirty && window.__editWindowIsDirty()) return;
           if (typeof loadTags === 'function') await loadTags();
+          if (Date.now() < (window.__editWindowSkipRemountUntil || 0)) return;
           const fresh = typeof API.getTask === 'function'
             ? await API.getTask(id)
             : null;
           if (!fresh) return;
+          if (Date.now() < (window.__editWindowSkipRemountUntil || 0)) return;
           mountEdit(fresh);
         });
       }

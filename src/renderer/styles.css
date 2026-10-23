@@ -122,6 +122,7 @@
 [data-skin="mario"] .ms-tag,
 [data-skin="mario"] .ms-more,
 [data-skin="mario"] .tag-pick,
+[data-skin="mario"] .status-badge,
 [data-skin="mario"] input,
 [data-skin="mario"] textarea,
 [data-skin="mario"] select {
@@ -199,7 +200,7 @@
   text-shadow: 1px 1px 0 #fff;
 }
 
-[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.doc-media-zoom):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-collapse-btn):not(.create-fab):not(.media-filter-btn):not(.media-ctx-item):not(.ms-tag-x):not(.ms-more):not(.ms-opt-btn):not(.ms-create-row),
+[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.doc-media-zoom):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-collapse-btn):not(.create-fab):not(.media-filter-btn):not(.media-ctx-item):not(.ms-tag-x):not(.ms-more):not(.ms-opt-btn):not(.ms-create-row):not(.task-check):not(.confirm-btn),
 [data-skin="mario"] .filters-toggle,
 [data-skin="mario"] #settingsBtn,
 [data-skin="mario"] .setting-actions button,
@@ -214,18 +215,28 @@
   image-rendering: pixelated;
   transition: transform 80ms steps(2), box-shadow 80ms steps(2), background 80ms linear;
 }
-[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.doc-media-zoom):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-collapse-btn):not(.create-fab):not(.media-filter-btn):not(.media-ctx-item):not(.ms-tag-x):not(.ms-more):not(.ms-opt-btn):not(.ms-create-row):hover,
+[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.doc-media-zoom):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-collapse-btn):not(.create-fab):not(.media-filter-btn):not(.media-ctx-item):not(.ms-tag-x):not(.ms-more):not(.ms-opt-btn):not(.ms-create-row):not(.task-check):not(.confirm-btn):hover,
 [data-skin="mario"] .filters-toggle:hover,
 [data-skin="mario"] #settingsBtn:hover,
 [data-skin="mario"] .setting-actions button:hover,
 [data-skin="mario"] .icon-btn:hover,
-[data-skin="mario"] .pg-pager button:hover {
+[data-skin="mario"] .pg-pager button:hover:not(:disabled):not(.disabled) {
   transform: translate(-1px, -1px);
   box-shadow: var(--pixel-shadow-lg) var(--pixel-shadow-lg) 0 var(--mario-brown);
   background: #fff0b0;
   color: var(--mario-brown);
 }
-[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.doc-media-zoom):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-collapse-btn):not(.create-fab):not(.media-filter-btn):not(.media-ctx-item):not(.ms-tag-x):not(.ms-more):not(.ms-opt-btn):not(.ms-create-row):active,
+[data-skin="mario"] .pg-pager button:disabled,
+[data-skin="mario"] .pg-pager button.disabled {
+  background: #e8d9a8 !important;
+  color: rgba(107, 62, 38, 0.35) !important;
+  border-color: rgba(107, 62, 38, 0.28) !important;
+  box-shadow: none !important;
+  transform: none !important;
+  opacity: 1;
+  cursor: not-allowed !important;
+}
+[data-skin="mario"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.rich-tb):not(.doc-media-del):not(.doc-media-zoom):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-collapse-btn):not(.create-fab):not(.media-filter-btn):not(.media-ctx-item):not(.ms-tag-x):not(.ms-more):not(.ms-opt-btn):not(.ms-create-row):not(.task-check):not(.confirm-btn):active,
 [data-skin="mario"] .filters-toggle:active,
 [data-skin="mario"] .setting-actions button:active {
   transform: translate(1px, 1px);
@@ -300,10 +311,29 @@
 [data-skin="mario"] .chip,
 [data-skin="mario"] .ms-tag,
 [data-skin="mario"] .ms-more,
-[data-skin="mario"] .filters-badge {
+[data-skin="mario"] .filters-badge,
+[data-skin="mario"] .status-badge {
   border-radius: 0 !important;
   border: var(--pixel) solid var(--mario-brown) !important;
   box-shadow: var(--pixel-shadow) var(--pixel-shadow) 0 var(--mario-brown) !important;
+}
+/* 状态徽章：与标签同像素块，勿保留默认胶囊圆角 */
+[data-skin="mario"] .status-badge {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+[data-skin="mario"] .status-badge.pending {
+  background: var(--mario-gold) !important;
+  color: var(--mario-brown) !important;
+  border-color: var(--mario-brown) !important;
+}
+[data-skin="mario"] .status-badge.done {
+  background: #5cb338 !important;
+  color: #fff !important;
+  border-color: var(--mario-brown) !important;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.25);
 }
 [data-skin="mario"] .ms-more {
   background: var(--primary) !important;
@@ -467,12 +497,25 @@
   background-image: linear-gradient(180deg, rgba(255,255,255,.18), transparent 120px);
 }
 
+/* 切回前台 / 启动：暂时关掉毛玻璃，避免 GPU 合成层重算卡死交互 */
+html[data-resume="idle"] *,
+html[data-resume="settling"] * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+html[data-resume="idle"] .card,
+html[data-resume="settling"] .card {
+  transition: none !important;
+}
+
 /* ========== Apple：简约毛玻璃 · 系统蓝 ========== */
 [data-skin="apple"] {
   --apple-glass: rgba(255, 255, 255, 0.55);
-  --apple-glass-strong: rgba(255, 255, 255, 0.72);
-  --apple-glass-solid: rgba(255, 255, 255, 0.88);
-  --apple-blur: saturate(190%) blur(40px);
+  --apple-glass-strong: rgba(255, 255, 255, 0.86);
+  --apple-glass-solid: rgba(255, 255, 255, 0.92);
+  /* 常驻层用轻 blur；重 blur 只留给弹层 */
+  --apple-blur: saturate(180%) blur(16px);
+  --apple-blur-heavy: saturate(190%) blur(40px);
   --apple-stroke: rgba(60, 60, 67, 0.12);
   --apple-highlight: rgba(255, 255, 255, 0.65);
   --status-go: #007aff;
@@ -494,7 +537,8 @@
     radial-gradient(ellipse 80% 55% at 96% 8%, rgba(186, 160, 255, 0.32), transparent 52%),
     radial-gradient(ellipse 70% 50% at 48% 105%, rgba(140, 210, 255, 0.35), transparent 55%),
     linear-gradient(165deg, #f4f7fc 0%, #e6ecf6 48%, #edf1f8 100%);
-  background-attachment: fixed;
+  /* fixed 在 Win/Electron 恢复时会整页重绘，改 scroll */
+  background-attachment: scroll;
   -webkit-font-smoothing: antialiased;
 }
 /* 标题栏必须用不透明实色，才能与右侧 Windows 原生 titleBarOverlay 同色；
@@ -563,6 +607,7 @@
   gap: 0;
 }
 [data-skin="apple"] #createPanel {
+  /* 常驻面板：半透明实色 + 轻 blur，避免恢复前台时大面积合成卡顿 */
   background: var(--apple-glass-strong);
   border: 0.5px solid var(--apple-stroke);
   border-left: 0.5px solid var(--apple-stroke);
@@ -571,8 +616,8 @@
   box-shadow:
     0 1px 0 var(--apple-highlight) inset,
     0 8px 32px rgba(15, 40, 80, 0.08);
-  backdrop-filter: var(--apple-blur);
-  -webkit-backdrop-filter: var(--apple-blur);
+  backdrop-filter: saturate(160%) blur(12px);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
 }
 [data-skin="apple"] .layout-split {
   flex-basis: 8px;
@@ -590,12 +635,13 @@
   padding: 0 0 8px;
 }
 [data-skin="apple"] .pagination {
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.88);
   border-top: 0.5px solid var(--apple-stroke);
   margin: 0 var(--list-pad-x) var(--pane-inset-y, 12px);
   border-radius: 16px;
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  /* 常驻底栏不做 blur：列表恢复时这里几乎必重绘 */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   padding-left: 14px;
   padding-right: 14px;
   padding-bottom: 10px;
@@ -676,9 +722,15 @@
     0 10px 24px rgba(15, 40, 80, 0.1);
   transform: none;
 }
-[data-skin="apple"] .card.done .text,
+[data-skin="apple"] .card.done .text {
+  color: #636366;
+  text-decoration: line-through;
+  text-decoration-color: rgba(60, 60, 67, 0.35);
+}
 [data-skin="apple"] .card.done .doc-preview {
   color: #636366;
+}
+[data-skin="apple"] .card.done .doc-preview .task-item.is-checked .task-item-body {
   text-decoration: line-through;
   text-decoration-color: rgba(60, 60, 67, 0.35);
 }
@@ -688,6 +740,36 @@
 [data-skin="apple"] .card.done .meta {
   color: #8e8e93;
   opacity: 1;
+}
+/* 列表附件：浅底圆角块（非胶囊），与正文/彩色标签都好区分 */
+[data-skin="apple"] .card .card-att {
+  padding: 4px 10px;
+  gap: 5px;
+  background: rgba(118, 118, 128, 0.12);
+  border: none;
+  border-radius: 8px;
+  color: #3a3a3c;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+[data-skin="apple"] .card .card-att .att-icon {
+  color: #636366;
+}
+[data-skin="apple"] .card .card-att > span:last-child {
+  color: #3a3a3c;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  max-width: 180px;
+}
+[data-skin="apple"] .card .card-att:hover {
+  background: rgba(118, 118, 128, 0.2);
+  border: none;
+  color: var(--primary);
+}
+[data-skin="apple"] .card .card-att:hover .att-icon,
+[data-skin="apple"] .card .card-att:hover > span:last-child {
+  color: var(--primary);
 }
 [data-skin="apple"] .card.done .card-att {
   opacity: 0.75;
@@ -1056,8 +1138,9 @@
   box-shadow:
     0 1px 0 var(--apple-highlight) inset,
     0 24px 64px rgba(15, 40, 80, 0.22);
-  backdrop-filter: var(--apple-blur);
-  -webkit-backdrop-filter: var(--apple-blur);
+  /* 弹层才用重 blur；平时不在屏上，不影响切回前台 */
+  backdrop-filter: var(--apple-blur-heavy);
+  -webkit-backdrop-filter: var(--apple-blur-heavy);
 }
 [data-skin="apple"] .confirm-modal {
   border-radius: 16px;
@@ -1234,9 +1317,9 @@
 [data-skin="apple"] #detailModal #detailActions.modal-footer {
   padding: 12px 16px 14px;
   border-top: 0.5px solid rgba(60, 60, 67, 0.1);
-  background: rgba(255, 255, 255, 0.45);
-  backdrop-filter: saturate(180%) blur(16px);
-  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 [data-skin="apple"] #detailActions button {
   display: inline-flex;
@@ -1369,7 +1452,7 @@
 }
 
 /* 次级按钮：圆角矩形（非胶囊）；排除侧栏 / 关闭 / 卡片勾选 / 缩略图删除 */
-[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.media-filter-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(.ms-tag-x):not(.ms-more):not(.ms-opt-btn):not(.ms-create-row):not(#settingsClose):not(#detailClose):not(#tagClose):not(#openEditWinBtn):not(.detail-popout-btn):not(.check):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-collapse-btn):not(.create-fab):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del):not(.doc-media-zoom):not(.media-ctx-item),
+[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.media-filter-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(.ms-tag-x):not(.ms-more):not(.ms-opt-btn):not(.ms-create-row):not(#settingsClose):not(#detailClose):not(#tagClose):not(#openEditWinBtn):not(.detail-popout-btn):not(.check):not(.task-check):not(.confirm-btn):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-collapse-btn):not(.create-fab):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del):not(.doc-media-zoom):not(.media-ctx-item),
 [data-skin="apple"] .filters-toggle,
 [data-skin="apple"] #settingsBtn,
 [data-skin="apple"] .icon-btn,
@@ -1418,16 +1501,24 @@
   width: 16px;
   height: 16px;
 }
-[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.media-filter-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(.ms-tag-x):not(.ms-more):not(.ms-opt-btn):not(.ms-create-row):not(#settingsClose):not(#detailClose):not(#tagClose):not(#openEditWinBtn):not(.detail-popout-btn):not(.check):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-collapse-btn):not(.create-fab):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del):not(.doc-media-zoom):not(.media-ctx-item):hover,
+[data-skin="apple"] button:not(.titlebar-btn):not(.tag-pick):not(.tag-expand):not(.skin-option):not(.theme-option):not(.skin-nav):not(.lightbox-tool-btn):not(.status-seg-btn):not(.media-filter-btn):not(.btn-link):not(.settings-nav-item):not(.ms-clear):not(.ms-tag-x):not(.ms-more):not(.ms-opt-btn):not(.ms-create-row):not(#settingsClose):not(#detailClose):not(#tagClose):not(#openEditWinBtn):not(.detail-popout-btn):not(.check):not(.task-check):not(.confirm-btn):not(.card-pick):not(.card-action):not(.list-export-btn):not(.selection-export-btn):not(.selection-select-all-btn):not(.selection-more-btn):not(.selection-cancel-btn):not(.create-collapse-btn):not(.create-fab):not(.remove):not(.att-remove):not(.plugin-toggle):not(.plugin-install):not(.plugin-uninstall):not(.plugin-index-build):not(.clip-quick-dismiss):not(.clip-quick-apply):not(.rich-tb):not(.doc-media-del):not(.doc-media-zoom):not(.media-ctx-item):hover,
 [data-skin="apple"] .filters-toggle:hover,
 [data-skin="apple"] #settingsBtn:hover,
 [data-skin="apple"] .icon-btn:hover,
-[data-skin="apple"] .pg-pager button:hover {
+[data-skin="apple"] .pg-pager button:hover:not(:disabled):not(.disabled) {
   background: rgba(118, 118, 128, 0.2);
   border: none !important;
   color: #1d1d1f;
   transform: none;
   box-shadow: none;
+}
+[data-skin="apple"] .pg-pager button:disabled,
+[data-skin="apple"] .pg-pager button.disabled {
+  background: rgba(118, 118, 128, 0.06) !important;
+  color: rgba(60, 60, 67, 0.28) !important;
+  border: none !important;
+  opacity: 1;
+  cursor: not-allowed !important;
 }
 [data-skin="apple"] #createActions .primary,
 [data-skin="apple"] #createPanel #createBtn,
@@ -2371,37 +2462,22 @@ body {
   background: color-mix(in srgb, var(--primary) 12%, var(--surface)) !important;
   color: var(--primary) !important;
 }
+/* 占位高度恒为 0，浮在列表上方，避免勾选时格子撑开导致列表抖动 */
 .selection-bar-slot {
   --sel-side-extend: 0px;
   --sel-bar-motion: 200ms cubic-bezier(0.22, 1, 0.36, 1);
   position: sticky;
   top: 0;
   z-index: 40;
-  display: grid;
-  grid-template-rows: 0fr;
+  height: 0;
   width: calc(100% + var(--sel-side-extend));
   max-width: calc(100% + var(--sel-side-extend));
   margin: 0 0 0 calc(-1 * var(--sel-side-extend));
   box-sizing: border-box;
-  transition:
-    grid-template-rows var(--sel-bar-motion),
-    margin-bottom var(--sel-bar-motion);
-}
-.selection-bar-slot.is-open {
-  grid-template-rows: 1fr;
-  margin-bottom: 8px;
-}
-.selection-bar-slot.is-leaving {
-  grid-template-rows: 0fr;
-  margin-bottom: 0;
-  transition-duration: 160ms;
-  transition-timing-function: ease-in;
+  overflow: visible;
+  pointer-events: none;
 }
 .selection-bar-clip {
-  min-height: 0;
-  overflow: hidden;
-}
-.selection-bar-slot.is-open:not(.is-leaving) .selection-bar-clip {
   overflow: visible;
 }
 .selection-bar {
@@ -2443,11 +2519,8 @@ body {
   transition-timing-function: ease-in;
 }
 @media (prefers-reduced-motion: reduce) {
-  .selection-bar-slot,
   .selection-bar {
     transition: none;
-  }
-  .selection-bar {
     transform: none;
   }
 }
@@ -2546,14 +2619,14 @@ body {
   min-height: 0;
   border: 0.5px solid var(--apple-stroke);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.96);
   box-shadow:
     0 0 0 0.5px var(--apple-stroke),
     0 1px 0 var(--apple-highlight) inset,
     0 2px 8px rgba(15, 40, 80, 0.08),
     0 8px 24px rgba(15, 40, 80, 0.14);
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 [data-skin="apple"] .selection-count {
   font-weight: 600;
@@ -2963,6 +3036,52 @@ body {
   box-shadow: 0 0 0 1.5px var(--surface, #fff);
 }
 .update-dot.hidden { display: none; }
+
+/* 设置弹窗：遮罩用 ::before 单独淡入，避免整层 opacity 导致弹窗到位后背景再闪一下 */
+#settingsOverlay.overlay {
+  background: transparent !important;
+}
+#settingsOverlay.overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(48, 49, 51, 0.5);
+  opacity: 0;
+  transition: opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+#settingsOverlay.overlay.is-open::before {
+  opacity: 1;
+}
+[data-skin="apple"] #settingsOverlay.overlay::before {
+  background: rgba(0, 0, 0, 0.18);
+}
+[data-skin="mario"] #settingsOverlay.overlay::before {
+  background: rgba(4, 60, 120, 0.45);
+}
+#settingsOverlay .settings-modal {
+  position: relative;
+  z-index: 1;
+  transform: scale(0.97) translateY(8px);
+  opacity: 0;
+  transition:
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+#settingsOverlay.is-open .settings-modal {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  #settingsOverlay.overlay::before,
+  #settingsOverlay .settings-modal {
+    transition-duration: 0.01ms !important;
+  }
+  #settingsOverlay .settings-modal {
+    transform: none !important;
+  }
+}
 
 /* 设置弹窗 */
 .settings-modal {
@@ -3740,13 +3859,14 @@ body {
   background: var(--bg);
   overflow: hidden;
 }
-/* 列表左右等宽；勿再为滚动条加减单侧内边距 */
+/* 列表左右等宽；预留滚动条槽，避免「全部有条 / 待执行无条」切换时卡片左右跳 */
 .list-scroll {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 8px var(--list-pad-x) 0;
   box-sizing: border-box;
 }
@@ -4086,6 +4206,26 @@ body.is-resizing-layout * {
   font-size: 12px;
   cursor: pointer;
 }
+.rich-tb[data-cmd="bold"] {
+  font-weight: 700;
+}
+.rich-tb[data-cmd="italic"] {
+  font-style: italic;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  font-weight: 600;
+}
+.rich-tb--check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+}
+.rich-tb-ico {
+  display: block;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
 .rich-tb:hover { border-color: var(--primary); color: var(--primary); }
 button.rich-tb.is-active,
 .rich-tb.is-active {
@@ -4133,6 +4273,15 @@ button.rich-tb.is-active,
   line-height: 1 !important;
   box-shadow: none !important;
 }
+[data-skin="apple"] button.rich-tb.rich-tb--check,
+[data-skin="apple"] .rich-tb.rich-tb--check {
+  padding: 0 10px !important;
+  gap: 5px;
+}
+[data-skin="apple"] .rich-tb-ico {
+  width: 13px;
+  height: 13px;
+}
 [data-skin="apple"] button.rich-tb:hover,
 [data-skin="apple"] .rich-tb:hover {
   background: rgba(var(--rgb), 0.12) !important;
@@ -4146,6 +4295,11 @@ button.rich-tb.is-active,
   border: none !important;
   box-shadow: none !important;
   font-weight: 700 !important;
+}
+[data-skin="apple"] button.rich-tb[data-cmd="italic"],
+[data-skin="apple"] .rich-tb[data-cmd="italic"] {
+  font-style: italic !important;
+  font-family: Georgia, 'Times New Roman', Times, serif !important;
 }
 [data-skin="apple"] .doc-media-del,
 [data-skin="apple"] .doc-media-zoom {
@@ -4188,6 +4342,206 @@ button.rich-tb.is-active,
 .rich-surface li > p { margin: 0; }
 .rich-surface li > p:not(:last-child) { margin-bottom: 0.35em; }
 .rich-surface a { color: var(--primary); }
+
+/* 待办清单（Notion / Linear 风格）：行距要紧凑，勿被 .doc-view li 的大 margin 盖住 */
+.task-list,
+.rich-surface ul.task-list,
+.rich-surface ol ul.task-list,
+.doc-view ul.task-list,
+.doc-preview ul.task-list {
+  list-style: none;
+  padding-left: 0 !important;
+  margin: 0 0 0.5em 0 !important;
+}
+.task-item,
+.rich-surface li.task-item,
+.doc-view li.task-item,
+.doc-preview li.task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 2px;
+  padding: 0;
+  list-style: none;
+  line-height: 1.45;
+}
+.task-item:last-child,
+.rich-surface li.task-item:last-child,
+.doc-view li.task-item:last-child,
+.doc-preview li.task-item:last-child {
+  margin-bottom: 0;
+}
+/* 外层 button 必须透明；勾选图形用内嵌 SVG（stroke/fill），皮肤 button{border:none} 压不到 */
+button.task-check,
+.task-check,
+[data-skin] button.task-check,
+[data-skin] .task-item > button.task-check {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 18px !important;
+  min-width: 18px !important;
+  max-width: 18px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  margin: 1px 0 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit !important;
+  font-size: 14px !important;
+  line-height: 0 !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+.task-check-box {
+  display: block !important;
+  width: 15px !important;
+  height: 15px !important;
+  min-width: 15px !important;
+  min-height: 15px !important;
+  overflow: visible;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+.task-check-rect {
+  fill: #ffffff;
+  stroke: #48484a;
+  stroke-width: 1.75;
+}
+button.task-check:hover .task-check-rect,
+.task-check:hover .task-check-rect {
+  stroke: var(--primary, #007aff);
+  fill: color-mix(in srgb, var(--primary, #007aff) 12%, #ffffff);
+}
+.task-item.is-checked > .task-check .task-check-rect {
+  fill: var(--primary, #007aff);
+  stroke: var(--primary, #007aff);
+}
+.task-check-tick {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 1.85;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+}
+.task-item.is-checked > .task-check .task-check-tick {
+  opacity: 1;
+}
+.task-check[aria-disabled="true"] {
+  pointer-events: none;
+  opacity: 0.85;
+}
+[data-skin="night"] .task-check-rect {
+  fill: #1c1c1e;
+  stroke: #98989d;
+}
+[data-skin="night"] .task-item.is-checked > .task-check .task-check-rect {
+  fill: var(--primary, #66b1ff);
+  stroke: var(--primary, #66b1ff);
+}
+/* 兼容旧结构里残留的 input */
+.task-check input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--primary, #007aff);
+  cursor: pointer;
+}
+.task-item-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-radius: 4px;
+}
+/* 编辑器内待办跟 surface 同一选区，允许跨行拖选（勾选按钮仍 user-select:none） */
+.rich-surface .task-item,
+.rich-surface .task-item-body {
+  user-select: text;
+  -webkit-user-select: text;
+}
+/* 编辑器 / 详情：待办聚焦不要系统黄/橙焦点框 */
+.rich-surface .task-item,
+.rich-surface .task-item:focus,
+.rich-surface .task-item:focus-within,
+.rich-surface .task-check:focus,
+.rich-surface .task-check:focus-visible,
+.rich-surface .task-item-body,
+.rich-surface .task-item-body:focus,
+.rich-surface .task-item-body:focus-visible,
+.rich-surface .task-item-body:focus-within,
+.doc-view .task-item,
+.doc-view .task-item:focus,
+.doc-view .task-item:focus-within,
+.doc-view .task-check:focus,
+.doc-view .task-check:focus-visible,
+.doc-view button.task-check:focus,
+.doc-view button.task-check:focus-visible,
+.doc-view .task-item-body,
+.doc-view .task-item-body:focus,
+.doc-view .task-item-body:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+.rich-surface .task-item input[type="checkbox"]:focus,
+.rich-surface .task-item input[type="checkbox"]:focus-visible,
+.rich-surface button.task-check:focus,
+.rich-surface button.task-check:focus-visible,
+.doc-view .task-item input[type="checkbox"]:focus,
+.doc-view .task-item input[type="checkbox"]:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.task-item-body > p,
+.doc-view .task-item-body > p,
+.rich-surface .task-item-body > p {
+  margin: 0 !important;
+}
+.task-item-body > p:not(:last-child) {
+  margin-bottom: 0.2em !important;
+}
+.task-item.is-checked .task-item-body {
+  color: var(--text-muted, #8e8e93);
+  text-decoration: line-through;
+}
+.task-item.is-checked .task-item-body a {
+  color: inherit;
+}
+.doc-preview .task-check {
+  pointer-events: none;
+}
+.doc-preview .task-check input {
+  cursor: default;
+}
+.doc-view .task-check input:not(:disabled) {
+  cursor: pointer;
+}
+/* 卡片预览：禁止待办正文可编辑焦点（黄框） */
+.card .task-item-body,
+.card .task-item,
+.doc-preview .task-item-body,
+.doc-preview .task-item {
+  outline: none !important;
+  caret-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: inherit;
+}
+.card .task-item-body[contenteditable],
+.doc-preview .task-item-body[contenteditable] {
+  -webkit-user-modify: read-only;
+}
 .doc-media {
   margin: 8px 0;
   position: relative;
@@ -4414,6 +4768,7 @@ body.is-media-resizing {
 .doc-view { font-size: 14px; line-height: 1.55; color: var(--text); }
 .doc-view p { margin: 0 0 0.65em; }
 .doc-view ul, .doc-view ol { margin: 0 0 0.65em; padding-left: 1.3em; }
+.doc-view ul.task-list { padding-left: 0; }
 .doc-view li {
   margin: 0 0 0.6em;
   line-height: inherit;
@@ -4532,10 +4887,14 @@ body.is-media-resizing {
   --card-ctrl-inset: 10px;
   --card-ctrl-w: 36px;
   --card-ctrl-h: 22px;
+  --card-ctrl-stack-gap: 6px;
   --card-pick-size: 18px;
   --card-border: var(--border);
   position: relative;
   display: block;
+  /* 离屏卡跳过布局/绘制，切回前台时少重算 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
   background: var(--surface);
   border: none;
   border-radius: var(--radius);
@@ -4602,9 +4961,17 @@ body.is-media-resizing {
 }
 /* 未执行任务：用主题色半透明边框突出，更显眼 */
 .card:not(.done) { --card-border: rgba(var(--rgb), 0.5); }
-.card.done .text,
-.card.done .doc-preview { text-decoration: line-through; color: var(--text-muted); }
-.card.done .doc-preview p { text-decoration: line-through; }
+.card.done .text { text-decoration: line-through; color: var(--text-muted); }
+/* 完成卡片：预览整体弱化，删除线只打在已勾待办上（与详情一致） */
+.card.done .doc-preview { color: var(--text-muted); }
+.card.done .doc-preview .task-item.is-checked .task-item-body {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+.card.done .doc-preview > p,
+.card.done .doc-preview li:not(.task-item) {
+  text-decoration: line-through;
+}
 .card.done .card-time,
 .card.done .card-tags { opacity: 0.72; }
 .card .card-title { display: block; }
@@ -4756,7 +5123,9 @@ body.is-media-resizing {
 }
 .card .card-att .att-icon { flex: 0 0 auto; color: var(--text-muted); }
 .card .card-att > span:last-child {
-  max-width: 160px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4805,7 +5174,7 @@ body.is-media-resizing {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: var(--card-ctrl-stack-gap, 6px);
   pointer-events: none;
 }
 .card:hover .card-actions,
@@ -4951,6 +5320,15 @@ body.is-media-resizing {
   position: relative;
   z-index: 2;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  /* 单行正文：撑开高度，让时间/勾选沉底，不与右上两钮重叠 */
+  min-height: calc(
+    var(--card-ctrl-h) * 2
+    + var(--card-ctrl-stack-gap)
+    + 12px
+    + var(--card-pick-size)
+  );
 }
 .card-action.is-done .card-action-ico {
   color: inherit;
@@ -5125,6 +5503,91 @@ textarea:focus {
   color: #f0faff;
   cursor: not-allowed;
 }
+#saveBtn.is-saving,
+#saveBtn:disabled {
+  opacity: 0.72;
+  cursor: wait;
+}
+#detailActions .save-btn-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+#detailActions,
+#detailActions .detail-footer-right,
+#detailActions.modal-footer {
+  overflow: visible;
+}
+#detailActions .save-ok-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform-origin: bottom center;
+  transform: translateX(-50%) translateY(12px) scale(0.3);
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: #2f9e4f;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 6px 16px rgba(15, 40, 80, 0.18);
+  z-index: 80;
+  will-change: transform, opacity;
+}
+/* 独立窗：fixed，避免被 overlay/modal overflow 裁掉 */
+#detailActions .save-ok-hint.is-fixed {
+  position: fixed;
+  z-index: 400;
+}
+#detailActions .save-ok-hint::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #2f9e4f;
+}
+#detailActions .save-ok-hint.is-fail {
+  background: #e5484d;
+}
+#detailActions .save-ok-hint.is-fail::after {
+  border-top-color: #e5484d;
+}
+/* 弹出与缩回分段，避免单段缓动在「停住」处顿挫 */
+#detailActions .save-ok-hint.is-on {
+  animation: save-ok-pop 0.3s cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+}
+#detailActions .save-ok-hint.is-out {
+  animation: save-ok-shrink 0.26s cubic-bezier(0.4, 0, 0.8, 0.15) forwards;
+}
+@keyframes save-ok-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px) scale(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+@keyframes save-ok-shrink {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px) scale(0.25);
+  }
+}
 .hint { font-size: 12px; color: var(--text-muted); }
 
 /* ---- 附件上传进度 ---- */
@@ -5226,6 +5689,8 @@ textarea:focus {
   z-index: 100;
   overflow: auto;
 }
+/* 确认框须盖过剪贴板快捷条（z-index:140） */
+#confirmOverlay.overlay { z-index: 200; }
 .overlay.hidden { display: none; }
 .modal {
   display: flex;
@@ -5310,7 +5775,42 @@ textarea:focus {
   font-weight: 600;
   line-height: 1.2;
 }
-#detailOverlay.overlay { background: rgba(31, 35, 41, 0.4); }
+/* 详情弹窗：与设置同一套遮罩淡入 + 面板缩放（避免整层 opacity 闪背景） */
+#detailOverlay.overlay {
+  background: transparent !important;
+}
+#detailOverlay.overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(31, 35, 41, 0.4);
+  opacity: 0;
+  transition: opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+#detailOverlay.overlay.is-open::before {
+  opacity: 1;
+}
+[data-skin="apple"] #detailOverlay.overlay::before {
+  background: rgba(0, 0, 0, 0.18);
+}
+[data-skin="mario"] #detailOverlay.overlay::before {
+  background: rgba(4, 60, 120, 0.45);
+}
+#detailOverlay #detailModal.modal {
+  position: relative;
+  z-index: 1;
+  transform: scale(0.97) translateY(8px);
+  opacity: 0;
+  transition:
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+#detailOverlay.is-open #detailModal.modal {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+}
 #detailModal.modal {
   border-radius: 14px;
   box-shadow: 0 12px 32px rgba(31, 35, 41, 0.14);
@@ -5664,13 +6164,30 @@ textarea:focus {
 .att-row:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 /* 创建面板新增附件 chip */
 #newAttachments,
-#editAttachments { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+#editAttachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+  max-width: 100%;
+  min-width: 0;
+}
 .att-item {
   display: inline-flex; align-items: center; gap: 4px;
+  max-width: min(100%, 280px);
+  min-width: 0;
   padding: 3px 8px;
   font-size: 12px; color: var(--text);
   background: var(--surface); border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
+  box-sizing: border-box;
+}
+.att-item .att-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .att-item .att-remove {
   display: inline-flex;
@@ -5894,7 +6411,7 @@ textarea:focus {
   font-size: 13px;
   line-height: 1.45;
 }
-.confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.confirm-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .confirm-actions button {
   padding: 5px 14px;
   border-radius: var(--radius-sm);
@@ -5908,6 +6425,31 @@ textarea:focus {
 .confirm-actions button:hover { border-color: var(--primary); color: var(--primary); }
 .confirm-actions .danger { background: var(--danger); color: #fff; border-color: var(--danger); }
 .confirm-actions .danger:hover { background: #b91c1c; color: #fff; border-color: #b91c1c; }
+.confirm-actions .primary,
+[data-skin] .confirm-actions button.confirm-btn.primary {
+  background: var(--primary) !important;
+  color: #fff !important;
+  border-color: var(--primary) !important;
+  font-weight: 600;
+}
+.confirm-actions .primary:hover,
+[data-skin] .confirm-actions button.confirm-btn.primary:hover {
+  filter: brightness(1.05);
+  color: #fff !important;
+  border-color: var(--primary) !important;
+}
+.confirm-actions .danger,
+[data-skin] .confirm-actions button.confirm-btn.danger {
+  background: var(--danger) !important;
+  color: #fff !important;
+  border-color: var(--danger) !important;
+}
+.confirm-actions .danger:hover,
+[data-skin] .confirm-actions button.confirm-btn.danger:hover {
+  background: #b91c1c !important;
+  color: #fff !important;
+  border-color: #b91c1c !important;
+}
 
 .clip-quick-bar {
   position: fixed;
@@ -6281,7 +6823,7 @@ textarea:focus {
   padding: 0 6px;
   line-height: 1;
 }
-.pg-pager button:hover:not(:disabled):not(.active) {
+.pg-pager button:hover:not(:disabled):not(.disabled):not(.active) {
   border-color: var(--primary);
   color: var(--primary);
 }
@@ -6291,9 +6833,22 @@ textarea:focus {
   color: var(--on-primary);
   cursor: default;
 }
+/* 不可翻页：明显弱化，与可点页码区分 */
+.pg-pager button:disabled,
 .pg-pager button.disabled {
-  color: var(--border-strong);
-  cursor: not-allowed;
+  color: color-mix(in srgb, var(--text-muted) 50%, transparent) !important;
+  background: color-mix(in srgb, var(--bg) 70%, var(--surface)) !important;
+  border-color: color-mix(in srgb, var(--border) 65%, transparent) !important;
+  opacity: 0.5;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+.pg-pager button:disabled:hover,
+.pg-pager button.disabled:hover {
+  color: color-mix(in srgb, var(--text-muted) 50%, transparent) !important;
+  background: color-mix(in srgb, var(--bg) 70%, var(--surface)) !important;
+  border-color: color-mix(in srgb, var(--border) 65%, transparent) !important;
 }
 .pg-pager .pg-more {
   border-color: transparent;
@@ -6841,6 +7396,8 @@ textarea:focus {
   flex-wrap: wrap;
   align-items: center;
   gap: 5px 6px;
+  margin-top: auto;
+  padding-top: 8px;
   /* 伸到与状态钮同一右缘（抵消卡片为状态钮留的 padding-right） */
   width: calc(100% + var(--card-ctrl-w) + 8px);
   max-width: none;
@@ -6985,7 +7542,7 @@ body.edit-window #detailOverlay {
   position: fixed;
   inset: 40px 0 0 0;
   z-index: 20;
-  background: var(--bg, #f5f5f5);
+  background: var(--bg, #f5f5f5) !important;
   align-items: stretch;
   justify-content: stretch;
   padding: 0 !important;
@@ -6993,10 +7550,14 @@ body.edit-window #detailOverlay {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
+body.edit-window #detailOverlay.overlay::before {
+  display: none !important;
+}
 body.edit-window #detailOverlay.hidden {
   display: flex !important;
 }
 body.edit-window #detailModal.modal,
+body.edit-window #detailOverlay #detailModal.modal,
 [data-skin] body.edit-window #detailModal.modal {
   width: 100% !important;
   min-width: 0 !important;
@@ -7010,6 +7571,9 @@ body.edit-window #detailModal.modal,
   margin: 0 !important;
   flex: 1 1 auto !important;
   background: var(--surface, #fff);
+  transform: none !important;
+  opacity: 1 !important;
+  transition: none !important;
 }
 /* 系统窗口已可缩放，隐藏弹窗内右下角缩放把手 */
 body.edit-window #detailModal .modal-resize {
@@ -7030,6 +7594,8 @@ body.edit-window #detailModal .modal-header.detail-top {
 }
 body.edit-window #detailModal #detailActions.modal-footer {
   flex: 0 0 auto;
+  overflow: visible;
+  z-index: 40;
 }
 body.edit-window #detailModal .modal-body {
   flex: 1 1 auto !important;

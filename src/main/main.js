@@ -8,7 +8,7 @@ if (process.platform === 'win32') {
 }
 
 // 开发模式热重载：
-// - 主进程 / preload 变更必须整进程重启，否则 IPC handler 会停留在旧代码（如缺 dialog:dirtyOpenEdit）
+// - 主进程 / preload 变更必须整进程重启，否则 IPC handler 会停留在旧代码
 // - 仅 renderer 变更时软刷新窗口即可
 // 注意：主进程内 require('electron') 是 API 对象，硬重启须用 process.execPath
 if (!app.isPackaged) {
@@ -138,47 +138,89 @@ function createEditWindow(taskId) {
     if (bw._allowClose || bw.isDestroyed()) return;
     e.preventDefault();
     if (bw._closing) return;
-    bw._closing = true;
-    (async () => {
-      let dirty = false;
-      try {
-        dirty = !!(await bw.webContents.executeJavaScript(
-          'typeof window.__editWindowIsDirty==="function"&&!!window.__editWindowIsDirty()'
-        ));
-      } catch (_) { /* ignore */ }
-      let action = 'close';
-      if (dirty) {
-        const { response } = await dialog.showMessageBox(bw, {
-          type: 'question',
-          buttons: ['保存', '不保存', '取消'],
-          defaultId: 0,
-          cancelId: 2,
-          message: '有未保存的修改',
-          detail: '保存后关闭，或不保存丢弃更改。',
-        });
-        action = response === 0 ? 'save' : response === 1 ? 'discard' : 'cancel';
-      }
-      if (action === 'cancel') {
-        bw._closing = false;
-        return;
-      }
-      if (action === 'save') {
-        let ok = false;
-        try {
-          ok = !!(await bw.webContents.executeJavaScript(
-            'window.__editWindowSave&&window.__editWindowSave()'
-          ));
-        } catch (_) { ok = false; }
-        if (!ok) {
-          bw._closing = false;
-          return;
-        }
-      }
-      bw._allowClose = true;
-      bw.close();
-    })().catch(() => { bw._closing = false; });
+    requestCloseEditWindow(bw).catch(() => { bw._closing = false; });
   });
   return { bw, whenShown };
+}
+
+/**
+ * 优雅关闭独立编辑窗（脏数据走渲染进程自定义确认）。
+ * @returns {Promise<boolean>} true=已关闭，false=用户取消或保存失败
+ */
+async function requestCloseEditWindow(bw) {
+  if (!bw || bw.isDestroyed()) return true;
+  if (bw._allowClose) {
+    bw.close();
+    return true;
+  }
+  if (bw._closing) {
+    return new Promise((resolve) => {
+      const done = (ok) => { cleanup(); resolve(ok); };
+      const onClosed = () => done(true);
+      const onCancel = () => done(false);
+      const cleanup = () => {
+        bw.removeListener('closed', onClosed);
+        bw.removeListener('edit-close-cancel', onCancel);
+        clearTimeout(timer);
+      };
+      bw.once('closed', onClosed);
+      bw.once('edit-close-cancel', onCancel);
+      const timer = setTimeout(() => done(false), 120000);
+    });
+  }
+  bw._closing = true;
+  try {
+    let dirty = false;
+    try {
+      dirty = !!(await bw.webContents.executeJavaScript(
+        'typeof window.__editWindowIsDirty==="function"&&!!window.__editWindowIsDirty()'
+      ));
+    } catch (_) { /* ignore */ }
+    let action = 'close';
+    if (dirty) {
+      let choice = 'cancel';
+      try {
+        const ask = bw.webContents.executeJavaScript(
+          '(async()=>typeof window.__editWindowAskDirtyClose==="function"'
+          + '?await window.__editWindowAskDirtyClose():"cancel")()'
+        );
+        choice = await Promise.race([
+          ask,
+          new Promise((r) => setTimeout(() => r('cancel'), 120000)),
+        ]);
+      } catch (_) { choice = 'cancel'; }
+      action = choice === 'save' ? 'save' : choice === 'discard' ? 'discard' : 'cancel';
+    }
+    if (action === 'cancel') {
+      bw._closing = false;
+      try { bw.emit('edit-close-cancel'); } catch (_) { /* ignore */ }
+      return false;
+    }
+    if (action === 'save') {
+      let ok = false;
+      try {
+        ok = !!(await bw.webContents.executeJavaScript(
+          'window.__editWindowSave&&window.__editWindowSave()'
+        ));
+      } catch (_) { ok = false; }
+      if (!ok) {
+        bw._closing = false;
+        try { bw.emit('edit-close-cancel'); } catch (_) { /* ignore */ }
+        return false;
+      }
+    }
+    bw._allowClose = true;
+    await new Promise((resolve) => {
+      if (bw.isDestroyed()) return resolve();
+      bw.once('closed', resolve);
+      bw.close();
+      setTimeout(resolve, 5000);
+    });
+    return true;
+  } catch (_) {
+    bw._closing = false;
+    return false;
+  }
 }
 
 // stream + supportFetchAPI：HTML5 <video> 需要 Range / 流式读取；secure 便于 media-src
@@ -256,7 +298,30 @@ function createWindow() {
   win.on('will-move', () => {
     try { win.webContents.send('ui:close-popups'); } catch (_) {}
   });
-  win.on('close', () => { app.quit(); });
+  win.on('close', (e) => {
+    if (win._allowQuit) return;
+    const openEdits = [...editWins.values()].filter((b) => b && !b.isDestroyed());
+    if (!openEdits.length) {
+      app.quit();
+      return;
+    }
+    // 先关掉（或确认）所有独立编辑窗，再退出；取消则保留主窗
+    e.preventDefault();
+    if (win._quittingEdits) return;
+    win._quittingEdits = true;
+    (async () => {
+      for (const bw of openEdits) {
+        const closed = await requestCloseEditWindow(bw);
+        if (!closed) {
+          win._quittingEdits = false;
+          return;
+        }
+      }
+      win._allowQuit = true;
+      win._quittingEdits = false;
+      app.quit();
+    })().catch(() => { win._quittingEdits = false; });
+  });
   return win;
 }
 
@@ -602,7 +667,7 @@ function setupStoreHandlers() {
   ipcHandle('image:pick', async (event) => {
     const res = await dialog.showOpenDialog(dialogParent(event), {
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: '图片', extensions: ['jpg', 'jpeg', 'png', 'bmp'] }],
+      filters: [{ name: '图片', extensions: ['jpg', 'jpeg', 'png', 'bmp', 'gif', 'webp'] }],
     });
     if (res.canceled) return [];
     const out = [];
@@ -619,8 +684,8 @@ function setupStoreHandlers() {
     const res = await dialog.showOpenDialog(dialogParent(event), {
       properties: ['openFile', 'multiSelections'],
       filters: [
-        { name: '图片与视频', extensions: ['jpg', 'jpeg', 'png', 'bmp', 'mp4', 'webm', 'mov'] },
-        { name: '图片', extensions: ['jpg', 'jpeg', 'png', 'bmp'] },
+        { name: '图片与视频', extensions: ['jpg', 'jpeg', 'png', 'bmp', 'gif', 'webp', 'mp4', 'webm', 'mov'] },
+        { name: '图片', extensions: ['jpg', 'jpeg', 'png', 'bmp', 'gif', 'webp'] },
         { name: '视频', extensions: ['mp4', 'webm', 'mov'] },
       ],
     });
@@ -657,7 +722,7 @@ function setupStoreHandlers() {
       }
       // Windows：资源管理器复制图片文件时，剪贴板可能是文件路径文本
       const text = (clipboard.readText() || '').trim().replace(/^"(.*)"$/, '$1');
-      if (text && /^([a-zA-Z]:\\|\\\\).+\.(jpe?g|png|bmp)$/i.test(text)) {
+      if (text && /^([a-zA-Z]:\\|\\\\).+\.(jpe?g|png|bmp|gif|webp)$/i.test(text)) {
         try {
           images.assertImageFile(text);
           mediaActions.allowPendingSrcPath(text);
@@ -969,19 +1034,6 @@ function setupWindowHandlers() {
     } catch (err) {
       return { ok: false, error: err.message };
     }
-  });
-  // 详情就地编辑未保存时，开独立窗前的三选一
-  ipcHandle('dialog:dirtyOpenEdit', async (event, opts = {}) => {
-    const bw = dialogParent(event);
-    const { response } = await dialog.showMessageBox(bw || undefined, {
-      type: 'question',
-      buttons: ['保存后打开', '不保存打开', '取消'],
-      defaultId: 0,
-      cancelId: 2,
-      message: opts.message || '有未保存的修改',
-      detail: opts.detail || '独立窗口将打开磁盘上的任务内容；请先保存草稿，或丢弃后打开。',
-    });
-    return response === 0 ? 'save' : response === 1 ? 'discard' : 'cancel';
   });
   /** 仅聚焦已有独立编辑窗；没有则返回 focused:false（不新建） */
   ipcHandle('window:focusEdit', (_e, taskId) => {

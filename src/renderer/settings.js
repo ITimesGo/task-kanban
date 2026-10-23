@@ -914,6 +914,9 @@ async function installPluginFromUi(id, card) {
   }
 }
 
+let _settingsCloseTimer = 0;
+let _settingsCloseHandler = null;
+
 function openSettings() {
   loadStoragePath();
   renderSkinOptions();
@@ -922,7 +925,24 @@ function openSettings() {
   renderTrashList();
   renderPluginList();
   fillViewDefaultsForm();
-  $('#settingsOverlay').classList.remove('hidden');
+  const overlay = document.getElementById('settingsOverlay');
+  if (!overlay) return;
+  if (_settingsCloseTimer) {
+    clearTimeout(_settingsCloseTimer);
+    _settingsCloseTimer = 0;
+  }
+  if (_settingsCloseHandler) {
+    overlay.removeEventListener('transitionend', _settingsCloseHandler);
+    _settingsCloseHandler = null;
+  }
+  overlay.classList.remove('hidden');
+  // 双 rAF：确保从关闭态样式起步再触发展开，动画才能播出来
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (!overlay.isConnected) return;
+      overlay.classList.add('is-open');
+    });
+  });
 }
 
 /** 打开设置并切到指定面板（供灯箱等入口调用） */
@@ -933,7 +953,34 @@ window.openSettingsTo = (panelId) => {
 
 function closeSettings() {
   closeAllViewDefaultsDropdowns();
-  $('#settingsOverlay').classList.add('hidden');
+  const overlay = document.getElementById('settingsOverlay');
+  if (!overlay || overlay.classList.contains('hidden')) return;
+  if (!overlay.classList.contains('is-open')) {
+    overlay.classList.add('hidden');
+    return;
+  }
+  overlay.classList.remove('is-open');
+  const finish = () => {
+    if (_settingsCloseTimer) {
+      clearTimeout(_settingsCloseTimer);
+      _settingsCloseTimer = 0;
+    }
+    if (_settingsCloseHandler) {
+      overlay.removeEventListener('transitionend', _settingsCloseHandler);
+      _settingsCloseHandler = null;
+    }
+    if (!overlay.classList.contains('is-open')) {
+      overlay.classList.add('hidden');
+    }
+  };
+  _settingsCloseHandler = (e) => {
+    // 遮罩淡出在 ::before 上；部分环境 target 为 overlay 且带 pseudoElement
+    if (e.target !== overlay) return;
+    if (e.propertyName && e.propertyName !== 'opacity') return;
+    finish();
+  };
+  overlay.addEventListener('transitionend', _settingsCloseHandler);
+  _settingsCloseTimer = window.setTimeout(finish, 360);
 }
 
 let viewDefaultsDraft = null;
@@ -1321,7 +1368,16 @@ document.getElementById('backupImportBtn').addEventListener('click', async () =>
 
 API.onStorageChanged(() => { loadTags(); refresh(); renderTrashList(); });
 if (typeof API.onTasksChanged === 'function' && !window.__IS_EDIT_WINDOW__) {
-  API.onTasksChanged(() => { loadTags(); refresh(); });
+  API.onTasksChanged(() => {
+    loadTags();
+    // 本地状态按钮动画进行中：勿全量 refresh，否则「待执行」筛选会立刻拆卡，丢失倒计时/离场动画
+    if (typeof ui !== 'undefined' && ui && typeof ui.shouldDeferTasksRefresh === 'function' && ui.shouldDeferTasksRefresh()) {
+      return;
+    }
+    // 详情里勾选待办项正在保存：勿整表 refresh 冲掉详情滚动/勾选态
+    if (window.__deferChecklistRefresh) return;
+    refresh();
+  });
 }
 
 function initAlwaysOnTop() {

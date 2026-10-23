@@ -1,10 +1,62 @@
 async function settleStatusChange(id) {
   const key = String(id);
   const { list } = buildFilteredList();
+  lastFilteredList = list;
   const stillVisible = list.some((x) => String(x.id) === key);
+
+  // 待执行等筛选：卡片离场后只摘这一张，避免整表 renderCards 闪烁
   if (!stillVisible && ui && typeof ui.animateCardOut === 'function') {
     await ui.animateCardOut(key);
+    const card = document.querySelector(`#cards .card[data-task-id="${CSS.escape(key)}"]`);
+    if (card) card.remove();
+
+    if (typeof pruneSelection === 'function') pruneSelection(list);
+    if (typeof syncSelectionUI === 'function') syncSelectionUI();
+
+    const total = list.length;
+    const maxPage = Math.max(1, Math.ceil(total / pageSize) || 1);
+    if (page > maxPage) {
+      page = maxPage;
+      await refresh({ reload: false });
+      return;
+    }
+    if (typeof renderPagination === 'function') renderPagination(total, maxPage);
+
+    const cardsRoot = document.getElementById('cards');
+    const left = cardsRoot ? cardsRoot.querySelectorAll('.card').length : 0;
+    if (left === 0) {
+      if (total === 0 && cardsRoot) {
+        cardsRoot.innerHTML = `<p class="empty">${searchQuery && searchQuery.trim() ? '没有匹配的任务' : '暂无任务'}</p>`;
+      } else {
+        await refresh({ reload: false });
+      }
+      return;
+    }
+    // 后台对齐磁盘，不重绘列表
+    try {
+      if (typeof API.getAllTasks === 'function') {
+        const next = await API.getAllTasks();
+        if (Array.isArray(next)) tasks = next;
+      }
+    } catch (_) { /* ignore */ }
+    return;
   }
+
+  // 「全部」等仍可见：只复位该卡状态钮，勿整表刷新
+  const card = document.querySelector(`#cards .card[data-task-id="${CSS.escape(key)}"]`);
+  const task = (tasks || []).find((x) => x && String(x.id) === key);
+  if (card && task && ui && typeof ui.resetToggleButton === 'function') {
+    card.classList.toggle('done', task.status === 'done');
+    ui.resetToggleButton(card.querySelector('[data-action="toggle"]'), task);
+    try {
+      if (typeof API.getAllTasks === 'function') {
+        const next = await API.getAllTasks();
+        if (Array.isArray(next)) tasks = next;
+      }
+    } catch (_) { /* ignore */ }
+    return;
+  }
+
   await refresh();
 }
 
@@ -12,7 +64,16 @@ async function toggleStatus(t, { skipUndo = false } = {}) {
   if (!t || t.id == null) return;
   const id = String(t.id);
   if (typeof clearSelection === 'function') clearSelection({ render: false });
-  const updated = await API.toggleStatus(t.id);
+  // 先占住刷新锁：toggle IPC 会立刻 fan-out tasks:changed；待执行筛选下否则会先拆掉卡片，动画全无
+  const useUndo = !skipUndo && ui && typeof ui.beginCardStatusUndo === 'function';
+  if (useUndo && typeof ui.holdStatusAnim === 'function') ui.holdStatusAnim(id);
+  let updated;
+  try {
+    updated = await API.toggleStatus(t.id);
+  } catch (err) {
+    if (useUndo && typeof ui.releaseStatusAnim === 'function') ui.releaseStatusAnim(id);
+    throw err;
+  }
   const idx = tasks.findIndex((x) => x.id === t.id);
   if (idx >= 0) tasks[idx] = updated;
   if (editing && editing.id === t.id) {
@@ -20,33 +81,112 @@ async function toggleStatus(t, { skipUndo = false } = {}) {
     updateOpenDetail();
   }
 
-  if (skipUndo || !ui || typeof ui.beginCardStatusUndo !== 'function') {
+  if (!useUndo) {
     await settleStatusChange(id);
     return;
   }
 
   const card = document.querySelector(`#cards .card[data-task-id="${CSS.escape(id)}"]`);
   if (!card) {
-    await settleStatusChange(id);
+    try {
+      await settleStatusChange(id);
+    } finally {
+      if (typeof ui.releaseStatusAnim === 'function') ui.releaseStatusAnim(id);
+    }
     return;
   }
 
   card.classList.toggle('done', updated.status === 'done');
   ui.beginCardStatusUndo(card, updated, {
     onUndo: async () => {
-      await toggleStatus(updated, { skipUndo: true });
+      try {
+        await toggleStatus(updated, { skipUndo: true });
+      } finally {
+        if (typeof ui.releaseStatusAnim === 'function') ui.releaseStatusAnim(id);
+      }
     },
     onCommit: async () => {
-      await settleStatusChange(id);
+      try {
+        await settleStatusChange(id);
+      } finally {
+        if (typeof ui.releaseStatusAnim === 'function') ui.releaseStatusAnim(id);
+      }
     },
   });
+}
+
+let _detailCloseTimer = 0;
+let _detailCloseHandler = null;
+
+function cancelDetailOverlayCloseAnim(overlay) {
+  if (_detailCloseTimer) {
+    clearTimeout(_detailCloseTimer);
+    _detailCloseTimer = 0;
+  }
+  if (_detailCloseHandler && overlay) {
+    overlay.removeEventListener('transitionend', _detailCloseHandler);
+    _detailCloseHandler = null;
+  }
+}
+
+function showDetailOverlay() {
+  const overlay = document.getElementById('detailOverlay');
+  if (!overlay) return;
+  cancelDetailOverlayCloseAnim(overlay);
+  overlay.classList.remove('hidden');
+  // 独立编辑窗铺满客户区，不做缩放淡入
+  if (window.__IS_EDIT_WINDOW__) {
+    overlay.classList.add('is-open');
+    return;
+  }
+  if (overlay.classList.contains('is-open')) return;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (!overlay.isConnected) return;
+      overlay.classList.add('is-open');
+    });
+  });
+}
+
+function hideDetailOverlay(afterHidden) {
+  const overlay = document.getElementById('detailOverlay');
+  const done = () => {
+    if (typeof afterHidden === 'function') afterHidden();
+  };
+  if (!overlay || overlay.classList.contains('hidden')) {
+    done();
+    return;
+  }
+  if (window.__IS_EDIT_WINDOW__ || !overlay.classList.contains('is-open')) {
+    cancelDetailOverlayCloseAnim(overlay);
+    overlay.classList.remove('is-open');
+    overlay.classList.add('hidden');
+    done();
+    return;
+  }
+  cancelDetailOverlayCloseAnim(overlay);
+  overlay.classList.remove('is-open');
+  const finish = () => {
+    cancelDetailOverlayCloseAnim(overlay);
+    if (!overlay.classList.contains('is-open')) {
+      overlay.classList.add('hidden');
+    }
+    done();
+  };
+  _detailCloseHandler = (e) => {
+    if (e.target !== overlay) return;
+    if (e.propertyName && e.propertyName !== 'opacity') return;
+    finish();
+  };
+  overlay.addEventListener('transitionend', _detailCloseHandler);
+  _detailCloseTimer = window.setTimeout(finish, 360);
 }
 
 async function openDetail(t) {
   editing = t;
   detailState = { mode: 'view', dataUrl: [] };
   updateOpenDetail();
-  $('#detailOverlay').classList.remove('hidden');
+  showDetailOverlay();
 }
 
 function attSnapshotKey(a) {
@@ -65,10 +205,29 @@ function isEditDirty() {
   return typeof check === 'function' ? !!check() : false;
 }
 
-/** 编辑态有未保存改动时确认；返回是否可以离开 */
+/** 编辑态有未保存改动时确认；返回是否可以离开（保存 / 不保存 / 取消） */
 async function confirmLeaveEditIfDirty() {
   if (!isEditDirty()) return true;
-  return showConfirm('有未保存的修改，确定离开？未保存的内容将丢失。');
+  const action = await showDirtyConfirm({
+    detail: '保存后离开，或不保存丢弃更改。',
+  });
+  if (action === 'cancel') return false;
+  if (action === 'save') {
+    if (typeof window.saveCurrentEdit !== 'function') return false;
+    return !!(await window.saveCurrentEdit());
+  }
+  return true;
+}
+
+async function leaveEditToDetailView() {
+  if (!(await confirmLeaveEditIfDirty())) return false;
+  if (typeof window._cleanupEditTagMenu === 'function') {
+    try { window._cleanupEditTagMenu(); } catch (_) { /* ignore */ }
+  }
+  window._editIsDirty = null;
+  detailState.mode = 'view';
+  updateOpenDetail();
+  return true;
 }
 
 async function closeDetailModal() {
@@ -76,15 +235,20 @@ async function closeDetailModal() {
     try { window.close(); } catch (_) { /* ignore */ }
     return;
   }
-  if (!(await confirmLeaveEditIfDirty())) return;
-  $('#detailOverlay').classList.add('hidden');
-  disposeEditEditor();
-  window._editIsDirty = null;
-  if (detailState) detailState.mode = 'view';
-  syncDetailPopoutBtn();
-  if (typeof window.syncClipboardQuickTargetLabel === 'function') {
-    window.syncClipboardQuickTargetLabel();
+  // 编辑态点右上角关闭：退回详情只读（与「取消」一致），不直接关掉弹窗
+  if (detailState && detailState.mode === 'edit') {
+    await leaveEditToDetailView();
+    return;
   }
+  hideDetailOverlay(() => {
+    disposeEditEditor();
+    window._editIsDirty = null;
+    if (detailState) detailState.mode = 'view';
+    syncDetailPopoutBtn();
+    if (typeof window.syncClipboardQuickTargetLabel === 'function') {
+      window.syncClipboardQuickTargetLabel();
+    }
+  });
 }
 
 function disposeEditEditor() {
@@ -169,41 +333,34 @@ function syncDetailPopoutBtn() {
 }
 
 /**
- * 从详情打开独立编辑窗。
- * 若正就地编辑且有未保存改动：保存后打开 / 不保存打开 / 取消。
+ * 打开独立编辑窗（详情弹出 / 卡片按钮共用）。
+ * 若详情正就地编辑：先处理脏数据，再开窗，并退回只读，避免并行编辑。
  */
-async function openIndependentEditFromDetail(btn) {
-  if (!editing || editing.id == null) return;
-  const taskId = editing.id;
+async function openIndependentEditForTask(taskId, btn) {
+  if (taskId == null) return;
+  if (window.__IS_EDIT_WINDOW__) return;
 
-  if (detailState && detailState.mode === 'edit' && isEditDirty()) {
-    let choice = 'cancel';
-    if (typeof API.dirtyOpenEditChoice === 'function') {
-      try {
-        choice = await API.dirtyOpenEditChoice({
-          message: '有未保存的修改',
-          detail: '独立窗口会加载已保存的内容。可先保存草稿再打开，或不保存直接打开。',
-        });
-      } catch (_) {
-        // 主进程未热重启时可能缺 handler；退化为二选一确认
-        const ok = await showConfirm('有未保存的修改，打开独立窗口将丢失这些修改。确定继续？');
-        choice = ok ? 'discard' : 'cancel';
+  if (detailState && detailState.mode === 'edit' && editing) {
+    if (isEditDirty()) {
+      const same = String(editing.id) === String(taskId);
+      const choice = await showDirtyConfirm({
+        detail: same
+          ? '独立窗口会加载已保存的内容。可先保存再打开，或不保存直接打开。'
+          : '当前任务有未保存修改。可先保存，或不保存后打开独立窗口。',
+        saveLabel: '保存后打开',
+        discardLabel: '不保存打开',
+      });
+      if (choice === 'cancel') return;
+      if (choice === 'save') {
+        if (typeof window.saveCurrentEdit !== 'function') return;
+        if (!(await window.saveCurrentEdit())) return;
+      } else {
+        window._editIsDirty = null;
       }
-    } else {
-      const ok = await showConfirm('有未保存的修改，打开独立窗口将丢失这些修改。确定继续？');
-      choice = ok ? 'discard' : 'cancel';
     }
-    if (choice === 'cancel') return;
-    if (choice === 'save') {
-      if (typeof window.saveCurrentEdit !== 'function') return;
-      const ok = await window.saveCurrentEdit();
-      if (!ok) return;
-      // 保存后详情回到只读（saveCurrentEdit 在非独立窗路径会切 view）
-    } else if (choice === 'discard') {
-      window._editIsDirty = null;
-      detailState.mode = 'view';
-      updateOpenDetail();
-    }
+    disposeEditEditor();
+    detailState.mode = 'view';
+    updateOpenDetail();
   }
 
   if (typeof API.openEditWindowFromButton === 'function') {
@@ -211,7 +368,21 @@ async function openIndependentEditFromDetail(btn) {
   } else if (typeof API.openEditWindow === 'function') {
     await API.openEditWindow(taskId);
   }
+
+  if (editing && String(editing.id) === String(taskId) && detailState && detailState.mode === 'edit') {
+    window._editIsDirty = null;
+    disposeEditEditor();
+    detailState.mode = 'view';
+    updateOpenDetail();
+  }
 }
+
+async function openIndependentEditFromDetail(btn) {
+  if (!editing || editing.id == null) return;
+  await openIndependentEditForTask(editing.id, btn);
+}
+
+window.openIndependentEditForTask = openIndependentEditForTask;
 
 function renderEditDetail() {
   $('#detailHead').innerHTML = '<h2>编辑任务</h2>';
@@ -489,9 +660,24 @@ function renderEditDetail() {
     if (payload.type === 'text') {
       const chunk = String(payload.text || '');
       if (!chunk) return false;
-      editEditor.surface.focus();
-      try { document.execCommand('insertText', false, chunk); }
-      catch (_) { editEditor.surface.appendChild(document.createTextNode(chunk)); }
+      const surface = editEditor.surface;
+      if (!surface) return false;
+      // 空编辑器直接落 DOM，避免先露出 placeholder 再插入
+      const blank = !(surface.textContent || '').trim();
+      if (blank) {
+        const esc = (s) => String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        surface.innerHTML = chunk.split(/\n/).map((line) => (
+          line ? `<p>${esc(line)}</p>` : '<p><br></p>'
+        )).join('') || '<p><br></p>';
+        try { surface.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) { /* ignore */ }
+      } else {
+        surface.focus();
+        try { document.execCommand('insertText', false, chunk); }
+        catch (_) { surface.appendChild(document.createTextNode(chunk)); }
+      }
       return true;
     }
     if (payload.type === 'image' && payload.dataUrl) {
@@ -581,7 +767,9 @@ function renderEditDetail() {
     <span class="detail-footer-spacer"></span>
     <div class="detail-footer-right">
       <button id="cancelEditBtn" type="button">${cancelLabel}</button>
-      <button id="saveBtn" class="primary" type="button">保存</button>
+      <span class="save-btn-wrap">
+        <button id="saveBtn" class="primary" type="button">保存</button>
+      </span>
     </div>`;
   document.getElementById('editAddFile').addEventListener('click', async () => {
     const paths = await API.pickAttachments();
@@ -592,58 +780,138 @@ function renderEditDetail() {
     drawEditAttachments();
   });
 
+  let saveHintTimer = 0;
+  function setSaveBusy(busy) {
+    const btn = document.getElementById('saveBtn');
+    if (!btn) return;
+    // 只改 disabled，不改 textContent（避免冲掉气泡或闪字）
+    btn.disabled = !!busy;
+    btn.classList.toggle('is-saving', !!busy);
+  }
+  /** 保存按钮上方：弹出 → 停留 → 缩回；ok=绿「已保存」，fail=红「保存失败」 */
+  function flashSaveHint(ok = true) {
+    const wrap = document.querySelector('#detailActions .save-btn-wrap');
+    const btn = document.getElementById('saveBtn');
+    if (!wrap || !btn) return;
+    wrap.classList.add('is-hinting');
+    let tip = wrap.querySelector('.save-ok-hint');
+    if (!tip) {
+      tip = document.createElement('span');
+      tip.className = 'save-ok-hint';
+      tip.setAttribute('aria-live', 'polite');
+      wrap.appendChild(tip);
+    }
+    tip.classList.toggle('is-fail', !ok);
+    tip.textContent = ok ? '已保存' : '保存失败';
+    // 独立窗：内层 overflow 易裁切 absolute 气泡，改为 fixed 锚在按钮上方
+    if (window.__IS_EDIT_WINDOW__) {
+      const r = btn.getBoundingClientRect();
+      tip.classList.add('is-fixed');
+      tip.style.left = `${Math.round(r.left + r.width / 2)}px`;
+      tip.style.bottom = `${Math.round(window.innerHeight - r.top + 8)}px`;
+    } else {
+      tip.classList.remove('is-fixed');
+      tip.style.left = '';
+      tip.style.bottom = '';
+    }
+    tip.classList.remove('is-on', 'is-out');
+    void tip.offsetWidth;
+    tip.classList.add('is-on');
+    if (saveHintTimer) clearTimeout(saveHintTimer);
+    saveHintTimer = setTimeout(() => {
+      tip.classList.remove('is-on');
+      tip.classList.add('is-out');
+      saveHintTimer = setTimeout(() => {
+        tip.classList.remove('is-out', 'is-fail', 'is-fixed');
+        tip.style.left = '';
+        tip.style.bottom = '';
+        wrap.classList.remove('is-hinting');
+        saveHintTimer = 0;
+      }, 280);
+    }, 900);
+  }
+  function flashSaveOk() { flashSaveHint(true); }
+  function flashSaveFail() { flashSaveHint(false); }
+
   async function saveCurrentEdit() {
     if (!editEditor || typeof editEditor.getPayload !== 'function') return false;
-    const body = await editEditor.getPayload();
-    const editAtts = editAttachments.map((a) => {
-      const isRel = (editing.attachments || []).some((x) => (typeof x === 'string' ? x : x.rel) === a);
-      return isRel ? a : { srcPath: a, name: a.split(/[\\/]/).pop() };
-    });
-    if (isTaskContentEmpty({ doc: body.doc, attachments: editAtts })) {
-      alert('请至少输入文字、图片、视频或附件');
-      return false;
-    }
-    const onProgress = (d) => updateUploadProgress('editProgress', d);
-    const sub = API.onAttachmentProgress(onProgress);
-    const newAtts = editAtts.filter((a) => typeof a !== 'string');
-    if (newAtts.length) showUploadProgress('editProgress', newAtts.length);
+    setSaveBusy(true);
     try {
-      const res = await API.updateTask(editing.id, {
-        doc: body.doc,
-        pendingMedia: body.pendingMedia,
-        attachments: editAtts,
+      const body = await editEditor.getPayload();
+      const editAtts = editAttachments.map((a) => {
+        const isRel = (editing.attachments || []).some((x) => (typeof x === 'string' ? x : x.rel) === a);
+        return isRel ? a : { srcPath: a, name: a.split(/[\\/]/).pop() };
       });
-      if (!res.ok) { alert(res.error || '保存失败'); return false; }
-      await API.setTaskTags(editing.id, editTagIds);
+      if (isTaskContentEmpty({ doc: body.doc, attachments: editAtts })) {
+        alert('请至少输入文字、图片、视频或附件');
+        return false;
+      }
+      const onProgress = (d) => updateUploadProgress('editProgress', d);
+      const sub = API.onAttachmentProgress(onProgress);
+      const newAtts = editAtts.filter((a) => typeof a !== 'string');
+      if (newAtts.length) showUploadProgress('editProgress', newAtts.length);
+      try {
+        const res = await API.updateTask(editing.id, {
+          doc: body.doc,
+          pendingMedia: body.pendingMedia,
+          attachments: editAtts,
+        });
+        if (!res.ok) {
+          flashSaveFail();
+          return false;
+        }
+        await API.setTaskTags(editing.id, editTagIds);
+      } catch (err) {
+        flashSaveFail();
+        return false;
+      } finally {
+        hideUploadProgress('editProgress');
+        if (typeof sub === 'function') sub();
+      }
+      // 勿 cleanupEditTagMenu：保存后不 remount，标签下拉仍须保持可用
+      const updated = (typeof API.getTask === 'function'
+        ? await API.getTask(editing.id)
+        : (await API.getAllTasks()).find((x) => x.id === editing.id));
+      if (updated) {
+        const idx = tasks.findIndex((x) => x.id === editing.id);
+        if (idx >= 0) tasks[idx] = updated;
+        editing = updated;
+      }
+      // 保存后保持编辑态与滚动位置：只同步附件/标签基线，禁止 remount（否则会跳到顶部）
+      if (window.__IS_EDIT_WINDOW__) {
+        // 短时跳过 fan-out remount，避免冲掉保存气泡（updateTask/setTaskTags 会各推一次）
+        window.__editWindowSkipRemountUntil = Date.now() + 2000;
+        setEditWindowChromeTitle(editing && editing.text);
+      }
+      editAttachments.length = 0;
+      for (const a of (editing && editing.attachments) || []) {
+        editAttachments.push(typeof a === 'string' ? a : a.rel);
+      }
+      const nextTags = (editing && editing.tags) || [];
+      editTagIds.length = 0;
+      for (const tid of nextTags) editTagIds.push(tid);
+      editBaseline.doc = JSON.stringify(editEditor.getDoc());
+      editBaseline.tags = editTagIds.slice().sort().join('\0');
+      editBaseline.atts = editAttachments.map(attSnapshotKey).join('\0');
+      drawEditAttachments();
+      try { syncEditTagOptions(); } catch (_) { /* ignore */ }
+      if (!window.__IS_EDIT_WINDOW__ && typeof refresh === 'function') {
+        await refresh();
+      }
+      flashSaveOk();
+      return true;
     } catch (err) {
-      alert((err && err.message) || '保存失败');
+      flashSaveFail();
       return false;
     } finally {
-      hideUploadProgress('editProgress');
-      if (typeof sub === 'function') sub();
+      setSaveBusy(false);
     }
-    cleanupEditTagMenu();
-    window._editIsDirty = null;
-    const updated = (typeof API.getTask === 'function'
-      ? await API.getTask(editing.id)
-      : (await API.getAllTasks()).find((x) => x.id === editing.id));
-    const idx = tasks.findIndex((x) => x.id === editing.id);
-    if (idx >= 0) tasks[idx] = updated;
-    editing = updated;
-    if (window.__IS_EDIT_WINDOW__) {
-      setEditWindowChromeTitle(updated && updated.text);
-      detailState.mode = 'edit';
-      updateOpenDetail();
-      return true;
-    }
-    detailState.mode = 'view';
-    await refresh();
-    updateOpenDetail();
-    return true;
   }
   window.saveCurrentEdit = saveCurrentEdit;
 
   document.getElementById('saveBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('saveBtn');
+    if (btn && btn.disabled) return;
     await saveCurrentEdit();
   });
   document.getElementById('cancelEditBtn').addEventListener('click', async () => {
@@ -651,11 +919,7 @@ function renderEditDetail() {
       try { window.close(); } catch (_) { /* ignore */ }
       return;
     }
-    if (!(await confirmLeaveEditIfDirty())) return;
-    cleanupEditTagMenu();
-    window._editIsDirty = null;
-    detailState.mode = 'view';
-    updateOpenDetail();
+    await leaveEditToDetailView();
   });
 }
 
@@ -665,12 +929,13 @@ async function deleteTask() {
   const id = editing && editing.id;
   const res = await API.deleteTask(editing.id);
   if (res && res.ok === false) { alert(res.error || '删除失败'); return; }
-  $('#detailOverlay').classList.add('hidden');
   editing = null;
-  disposeEditEditor();
-  if (typeof window.syncClipboardQuickTargetLabel === 'function') {
-    window.syncClipboardQuickTargetLabel();
-  }
+  hideDetailOverlay(() => {
+    disposeEditEditor();
+    if (typeof window.syncClipboardQuickTargetLabel === 'function') {
+      window.syncClipboardQuickTargetLabel();
+    }
+  });
   if (id != null && ui && typeof ui.animateCardOut === 'function') {
     await ui.animateCardOut(id);
   }
@@ -700,9 +965,12 @@ if (openEditWinBtnEl) {
 async function syncOpenDetailAfterTasksChanged() {
   if (window.__IS_EDIT_WINDOW__) return;
   if (!editing || editing.id == null) return;
+  if (window.__deferChecklistRefresh) return;
   const overlay = document.getElementById('detailOverlay');
   if (!overlay || overlay.classList.contains('hidden')) return;
   if (isEditDirty()) return;
+  // 就地编辑中（含刚保存、未 dirty）：勿 remount，否则编辑区滚动条回到顶部
+  if (detailState && detailState.mode === 'edit') return;
 
   const id = editing.id;
   let fresh = null;
@@ -713,12 +981,13 @@ async function syncOpenDetailAfterTasksChanged() {
     fresh = tasks.find((t) => t && String(t.id) === String(id)) || null;
   }
   if (!fresh) {
-    overlay.classList.add('hidden');
-    disposeEditEditor();
-    window._editIsDirty = null;
     editing = null;
-    if (detailState) detailState.mode = 'view';
-    syncDetailPopoutBtn();
+    hideDetailOverlay(() => {
+      disposeEditEditor();
+      window._editIsDirty = null;
+      if (detailState) detailState.mode = 'view';
+      syncDetailPopoutBtn();
+    });
     return;
   }
 
@@ -734,6 +1003,90 @@ if (typeof API.onTasksChanged === 'function' && !window.__IS_EDIT_WINDOW__) {
   });
 }
 
+/** 详情只读态：勾选待办项 → 写回 doc 并自动保存（串行队列，不丢快速连点） */
+let _checklistSaveChain = Promise.resolve();
+function applyDetailTaskChecked(li, checked) {
+  const on = !!checked;
+  li.setAttribute('data-checked', on ? 'true' : 'false');
+  li.classList.toggle('is-checked', on);
+  const btn = li.querySelector('.task-check[role="checkbox"], button.task-check');
+  if (btn) btn.setAttribute('aria-checked', on ? 'true' : 'false');
+  const input = li.querySelector('input[type="checkbox"]');
+  if (input) input.checked = on;
+}
+
+function onDetailChecklistToggle(li, checked) {
+  if (window.__IS_EDIT_WINDOW__) return;
+  if (!detailState || detailState.mode !== 'view') return;
+  if (!editing || editing.id == null) return;
+  const view = ui.detailBody && ui.detailBody.querySelector('.doc-view');
+  if (!view || !li || !view.contains(li)) return;
+
+  const prev = li.classList.contains('is-checked');
+  applyDetailTaskChecked(li, checked);
+
+  window.__deferChecklistRefresh = true;
+  _checklistSaveChain = _checklistSaveChain.then(async () => {
+    try {
+      if (typeof htmlRootToDoc !== 'function') return;
+      if (!editing || editing.id == null) return;
+      const liveView = ui.detailBody && ui.detailBody.querySelector('.doc-view');
+      if (!liveView) return;
+      const doc = htmlRootToDoc(liveView);
+      const res = await API.updateTask(editing.id, {
+        doc,
+        attachments: editing.attachments || [],
+      });
+      if (!res || !res.ok) {
+        if (li.isConnected) applyDetailTaskChecked(li, prev);
+        return;
+      }
+      const updated = res.task;
+      if (updated) {
+        editing = updated;
+        const idx = Array.isArray(tasks) ? tasks.findIndex((t) => t && String(t.id) === String(updated.id)) : -1;
+        if (idx >= 0) tasks[idx] = updated;
+      }
+      if (typeof refresh === 'function') await refresh({ reload: false });
+    } catch (_) {
+      if (li.isConnected) applyDetailTaskChecked(li, prev);
+    } finally {
+      window.setTimeout(() => { window.__deferChecklistRefresh = false; }, 400);
+    }
+  }).catch(() => { /* ignore */ });
+}
+
+function toggleDetailTaskCheckFromHit(hit) {
+  if (!hit || !ui.detailBody.contains(hit)) return;
+  if (hit.getAttribute && hit.getAttribute('aria-disabled') === 'true') return;
+  const li = hit.closest('li.task-item, li[data-type="taskItem"]');
+  if (!li) return;
+  const next = !li.classList.contains('is-checked');
+  onDetailChecklistToggle(li, next);
+}
+
+if (ui && ui.detailBody && !window.__IS_EDIT_WINDOW__) {
+  ui.detailBody.addEventListener('click', (e) => {
+    const hit = e.target && e.target.closest && e.target.closest(
+      'button.task-check, .task-check[role="checkbox"], li.task-item input[type="checkbox"]'
+    );
+    if (!hit || !ui.detailBody.contains(hit)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    toggleDetailTaskCheckFromHit(hit);
+  });
+  ui.detailBody.addEventListener('keydown', (e) => {
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    const hit = e.target && e.target.closest && e.target.closest(
+      'button.task-check, .task-check[role="checkbox"]'
+    );
+    if (!hit || !ui.detailBody.contains(hit)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    toggleDetailTaskCheckFromHit(hit);
+  });
+}
+
 let _editPasteAdd = null;
 bindContentPaste({
   getZone: () => (detailState.mode === 'edit' ? document.getElementById('editDrop') : null),
@@ -743,3 +1096,4 @@ bindContentPaste({
   addImages: (items) => { if (_editPasteAdd) _editPasteAdd(items); },
   maxMb: 10,
 });
+

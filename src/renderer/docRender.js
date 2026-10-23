@@ -1,5 +1,27 @@
 /** doc JSON ↔ HTML（编辑 / 只读 / 卡片预览） */
 
+function _taskDocApi() {
+  if (typeof isValidDoc === 'function' && typeof resolveTaskDoc === 'function') {
+    return { isValidDoc, resolveTaskDoc };
+  }
+  if (typeof module !== 'undefined' && module.exports) {
+    try { return require('./taskDoc'); } catch (_) { /* ignore */ }
+  }
+  return null;
+}
+
+function _isValidDoc(doc) {
+  const api = _taskDocApi();
+  if (api && typeof api.isValidDoc === 'function') return api.isValidDoc(doc);
+  return !!(doc && doc.type === 'doc' && Array.isArray(doc.content));
+}
+
+function _resolveTaskDoc(task) {
+  const api = _taskDocApi();
+  if (api && typeof api.resolveTaskDoc === 'function') return api.resolveTaskDoc(task);
+  return (task && task.doc) || { type: 'doc', content: [{ type: 'paragraph' }] };
+}
+
 function docEsc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
@@ -94,6 +116,28 @@ function nodeToHtml(node, opts) {
   if (node.type === 'orderedList') {
     return `<ol>${(node.content || []).map((c) => nodeToHtml(c, o)).join('')}</ol>`;
   }
+  if (node.type === 'taskList') {
+    return `<ul class="task-list" data-type="taskList">${(node.content || []).map((c) => nodeToHtml(c, o)).join('')}</ul>`;
+  }
+  if (node.type === 'taskItem') {
+    const checked = !!(node.attrs && node.attrs.checked);
+    const inner = (node.content || []).map((c) => nodeToHtml(c, o)).join('');
+    // 用 button 画勾选，避免 contenteditable 里原生 checkbox 被点两次（勾上又弹回、删除线残留）
+    const inert = o.checksInteractive === false ? ' tabindex="-1" aria-disabled="true"' : ' tabindex="0"';
+    // 仅勾选按钮不可编辑；li/body 跟外层 surface 同一可编辑区，才能跨行拖选
+    const shell = o.editorShell
+      ? { li: '', btn: ' contenteditable="false"', body: '' }
+      : { li: '', btn: '', body: '' };
+    return `<li class="task-item${checked ? ' is-checked' : ''}" data-type="taskItem" data-checked="${checked ? 'true' : 'false'}"${shell.li}>`
+      + `<button type="button" class="task-check" role="checkbox" aria-checked="${checked ? 'true' : 'false'}" aria-label="完成此项"${inert}${shell.btn}>`
+      + `<svg class="task-check-box" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">`
+      + `<rect class="task-check-rect" x="1.5" y="1.5" width="13" height="13" rx="3" ry="3" fill="#ffffff" stroke="#48484a" stroke-width="1.75"/>`
+      + `<path class="task-check-tick" d="M4.2 8.2l2.4 2.4 5-5.2" fill="none" stroke="#ffffff" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"/>`
+      + `</svg>`
+      + `</button>`
+      + `<div class="task-item-body"${shell.body}>${inner || '<p><br></p>'}</div>`
+      + `</li>`;
+  }
   if (node.type === 'listItem') {
     return `<li>${(node.content || []).map((c) => nodeToHtml(c, o)).join('')}</li>`;
   }
@@ -137,7 +181,7 @@ function nodeToHtml(node, opts) {
 }
 
 function docToHtml(doc, opts) {
-  if (!isValidDoc(doc)) return '';
+  if (!_isValidDoc(doc)) return '';
   const o = Object.assign({ _mediaCount: 0, _blockCount: 0 }, opts || {});
   const blocks = doc.content || [];
   if (o.blockLimit == null) {
@@ -155,7 +199,7 @@ function docToHtml(doc, opts) {
 
 function countDocMediaNodes(doc) {
   let n = 0;
-  if (!isValidDoc(doc)) return 0;
+  if (!_isValidDoc(doc)) return 0;
   function walk(node) {
     if (!node) return;
     if (node.type === 'image' || node.type === 'video') n += 1;
@@ -184,7 +228,7 @@ function cardDocPreviewHtml(task) {
     const hit = cardPreviewCache.get(key);
     if (hit != null) return hit;
   }
-  const doc = resolveTaskDoc(task);
+  const doc = _resolveTaskDoc(task);
   const totalMedia = countDocMediaNodes(doc);
   const html = docToHtml(doc, {
     mediaLimit: 4,
@@ -193,6 +237,7 @@ function cardDocPreviewHtml(task) {
     linkAsSpan: true,
     videoPlaceholder: true,
     lazyMedia: true,
+    checksInteractive: false,
   });
   const more = totalMedia > 4 ? `<span class="thumb-more">+${totalMedia - 4}</span>` : '';
   const out = (!html.trim() && !more)
@@ -209,8 +254,12 @@ function cardDocPreviewHtml(task) {
 }
 
 function detailDocHtml(task) {
-  const doc = resolveTaskDoc(task);
-  return `<div class="doc-view">${docToHtml(doc, { skipEmptyMedia: true, videoControls: true })}</div>`;
+  const doc = _resolveTaskDoc(task);
+  return `<div class="doc-view">${docToHtml(doc, {
+    skipEmptyMedia: true,
+    videoControls: true,
+    checksInteractive: true,
+  })}</div>`;
 }
 
 /* ---------- HTML → doc（编辑器序列化） ---------- */
@@ -344,13 +393,24 @@ function appendBlocksFromContainer(container, content) {
     const tag = child.tagName;
     if (tag === 'UL') {
       flushInline();
-      content.push({
-        type: 'bulletList',
-        content: Array.from(child.children).filter((c) => c.tagName === 'LI').map((li) => ({
-          type: 'listItem',
-          content: listItemBlocksSimple(li),
-        })),
-      });
+      if (isTaskListEl(child)) {
+        content.push({
+          type: 'taskList',
+          content: Array.from(child.children).filter((c) => c.tagName === 'LI').map((li) => ({
+            type: 'taskItem',
+            attrs: { checked: isTaskItemChecked(li) },
+            content: taskItemBlocksSimple(li),
+          })),
+        });
+      } else {
+        content.push({
+          type: 'bulletList',
+          content: Array.from(child.children).filter((c) => c.tagName === 'LI').map((li) => ({
+            type: 'listItem',
+            content: listItemBlocksSimple(li),
+          })),
+        });
+      }
       continue;
     }
     if (tag === 'OL') {
@@ -411,13 +471,74 @@ function appendBlocksFromContainer(container, content) {
   flushInline();
 }
 
+function elHasClass(el, name) {
+  if (!el) return false;
+  if (el.classList && typeof el.classList.contains === 'function') {
+    try { return !!el.classList.contains(name); } catch (_) { /* ignore */ }
+  }
+  const cls = (el.getAttribute && el.getAttribute('class')) || el.className || '';
+  return String(cls).split(/\s+/).includes(name);
+}
+
+function isTaskListEl(el) {
+  if (!el) return false;
+  if (el.getAttribute && el.getAttribute('data-type') === 'taskList') return true;
+  return elHasClass(el, 'task-list');
+}
+
+function isTaskItemChecked(li) {
+  if (!li) return false;
+  // class / data-checked 为准；勿信可能被原生事件打回的 input.checked
+  if (elHasClass(li, 'is-checked')) return true;
+  if (li.getAttribute && li.getAttribute('data-checked') === 'true') return true;
+  if (typeof li.querySelector === 'function') {
+    const btn = li.querySelector('.task-check[role="checkbox"]');
+    if (btn && btn.getAttribute('aria-checked') === 'true') return true;
+    const input = li.querySelector('input[type="checkbox"]');
+    if (input && input.checked) return true;
+  }
+  return false;
+}
+
+function taskItemBlocksSimple(li) {
+  const content = [];
+  let body = null;
+  if (li && typeof li.querySelector === 'function') {
+    body = li.querySelector('.task-item-body');
+  }
+  if (body) {
+    appendBlocksFromContainer(body, content);
+  } else if (li && li.childNodes) {
+    // 无 body：跳过勾选控件，把其余子节点当块解析
+    const wrap = {
+      childNodes: [],
+      children: [],
+    };
+    for (const child of li.childNodes) {
+      if (child.nodeType === 1) {
+        if (child.tagName === 'LABEL' || child.tagName === 'INPUT') continue;
+        if (elHasClass(child, 'task-check')) continue;
+      }
+      wrap.childNodes.push(child);
+      if (child.nodeType === 1) wrap.children.push(child);
+    }
+    appendBlocksFromContainer(wrap, content);
+  }
+  const blocks = content.filter((n) =>
+    n && (n.type === 'paragraph' || n.type === 'image' || n.type === 'video'
+      || n.type === 'bulletList' || n.type === 'orderedList' || n.type === 'taskList')
+  );
+  if (!blocks.length) return [{ type: 'paragraph' }];
+  return blocks;
+}
+
 function listItemBlocksSimple(li) {
   const content = [];
   appendBlocksFromContainer(li, content);
   // 保留段落、媒体与嵌套列表（缩进 ul/ol），避免保存时静默丢内容
   const blocks = content.filter((n) =>
     n && (n.type === 'paragraph' || n.type === 'image' || n.type === 'video'
-      || n.type === 'bulletList' || n.type === 'orderedList')
+      || n.type === 'bulletList' || n.type === 'orderedList' || n.type === 'taskList')
   );
   if (!blocks.length) return [{ type: 'paragraph' }];
   return blocks;

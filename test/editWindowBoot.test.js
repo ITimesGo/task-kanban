@@ -19,8 +19,11 @@ test('editWindowTitle is fixed label', () => {
   assert.equal(editWindowTitle(''), '编辑');
 });
 
-test('resolveDirtyCloseAction maps dialog response', () => {
+test('resolveDirtyCloseAction maps action / dialog response', () => {
   assert.equal(resolveDirtyCloseAction({ dirty: false }), 'close');
+  assert.equal(resolveDirtyCloseAction({ dirty: true, action: 'save' }), 'save');
+  assert.equal(resolveDirtyCloseAction({ dirty: true, action: 'discard' }), 'discard');
+  assert.equal(resolveDirtyCloseAction({ dirty: true, action: 'cancel' }), 'cancel');
   assert.equal(resolveDirtyCloseAction({ dirty: true, response: 0 }), 'save');
   assert.equal(resolveDirtyCloseAction({ dirty: true, response: 1 }), 'discard');
   assert.equal(resolveDirtyCloseAction({ dirty: true, response: 2 }), 'cancel');

@@ -1,6 +1,8 @@
 /** 拖放文件：识别图片/视频，并解析为本地路径或 dataUrl */
-const IMG_MIME = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/bmp']);
-const IMG_EXT = /\.(jpe?g|png|bmp)$/i;
+const IMG_MIME = new Set([
+  'image/jpeg', 'image/jpg', 'image/png', 'image/bmp', 'image/gif', 'image/webp',
+]);
+const IMG_EXT = /\.(jpe?g|png|bmp|gif|webp)$/i;
 const VID_MIME = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
 const VID_EXT = /\.(mp4|webm|mov)$/i;
 const MAX_IMG_BYTES = 10 * 1024 * 1024;

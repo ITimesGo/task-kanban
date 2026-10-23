@@ -192,7 +192,7 @@ function assertOcrReady() {
 const { getClipboardSequenceNumber } = require('./clipboardSeq');
 
 function imageLooksPresent(formats) {
-  return (formats || []).some((f) => /png|jpe?g|bmp|dib|bitmap|image/i.test(String(f)));
+  return (formats || []).some((f) => /png|jpe?g|bmp|gif|webp|dib|bitmap|image/i.test(String(f)));
 }
 
 /** 小图样本签名，避免把整图压成 PNG */
@@ -244,9 +244,16 @@ function imageFullDataUrl(img) {
   return `data:image/png;base64,${png.toString('base64')}`;
 }
 
+function textLooksPresent(formats) {
+  return (formats || []).some((f) => /text|html|rtf|string/i.test(String(f)));
+}
+
+/** 探测时可内联带回的正文上限；更大则只带预览，填入时再 peek */
+const PROBE_TEXT_INLINE_MAX = 100 * 1024;
+
 /**
- * 轻量探测：只读序号 + formats（图片绝不 readImage）。
- * 供轮询 / 从后台恢复使用，避免大图堵死主进程。
+ * 轻量探测：序号 + formats；文字可 readText（通常很快），图片绝不 readImage。
+ * 轮询 / 从后台恢复用；大图缩略图仍由 clipboardPeek 在悬停或填入时再读。
  */
 function clipboardProbe(opts = {}) {
   const lastSeq = opts && opts.lastSeq != null ? Number(opts.lastSeq) : null;
@@ -256,29 +263,35 @@ function clipboardProbe(opts = {}) {
       return { ok: true, unchanged: true, seq };
     }
     const formats = clipboard.availableFormats() || [];
+    const seqPart = seq != null ? String(seq) : formats.join('|');
     if (imageLooksPresent(formats)) {
       return {
         ok: true,
         type: 'image',
-        // 用序号作签名：后台期间复制的大图不会触发 readImage
-        sig: `img:seq:${seq != null ? seq : formats.join('|')}`,
+        sig: `img:seq:${seqPart}`,
         seq,
         light: true,
+        needsContent: true,
       };
     }
-    const text = String(clipboard.readText() || '');
-    const trimmed = text.trim();
-    if (trimmed) {
-      const sig = 'txt:' + crypto.createHash('md5').update(trimmed).digest('hex').slice(0, 16);
+    if (textLooksPresent(formats)) {
+      // 有变化时才走到这里：读一次正文，提示条直接显示真实预览，避免占位文案闪一下再替换
+      const raw = String(clipboard.readText() || '');
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        return { ok: true, type: 'empty', sig: '', seq };
+      }
       const preview = trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed;
+      const inline = raw.length <= PROBE_TEXT_INLINE_MAX;
       return {
         ok: true,
         type: 'text',
-        sig,
+        sig: `txt:seq:${seqPart}`,
         preview,
-        text,
+        text: inline ? raw : '',
+        needsContent: !inline,
         seq,
-        light: true,
+        light: !inline,
       };
     }
     return { ok: true, type: 'empty', sig: '', seq };

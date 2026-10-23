@@ -10,14 +10,19 @@ function createRichEditor(host, options) {
 
   const bar = document.createElement('div');
   bar.className = 'rich-toolbar';
+  // 待办：用描边方框 + 对勾 SVG，避免 □ 字符在激活态发虚、对不齐
+  const checkLabel = '<svg class="rich-tb-ico" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">'
+    + '<rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/>'
+    + '<path d="M4.2 8.1l2.4 2.4 5-5.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '</svg><span>待办</span>';
   bar.innerHTML = [
     ['bold', 'B', '加粗'],
     ['italic', 'I', '斜体'],
-    ['ul', '• 列表', '无序列表'],
+    ['check', checkLabel, '待办清单：再点一次退出当前项'],
     ['ol', '1. 列表', '有序列表'],
     ['image', '图片', '插入图片/视频'],
   ].map(([cmd, label, title]) =>
-    `<button type="button" class="rich-tb" data-cmd="${cmd}" title="${title}">${label}</button>`
+    `<button type="button" class="rich-tb${cmd === 'check' ? ' rich-tb--check' : ''}" data-cmd="${cmd}" title="${title}">${label}</button>`
   ).join('');
 
   const surface = document.createElement('div');
@@ -224,6 +229,8 @@ function createRichEditor(host, options) {
       alert('最多添加10张图片');
       return false;
     }
+    // 待办项内插图会嵌进 li，保存/编辑易乱；先降成普通段再插
+    leaveTaskItemIfNeeded();
     if (value && typeof value === 'object' && value.srcPath && typeof API !== 'undefined' && API.allowMediaSrcPath) {
       try { API.allowMediaSrcPath(value.srcPath); } catch (_) { /* ignore */ }
     }
@@ -263,6 +270,7 @@ function createRichEditor(host, options) {
     const counts = countKinds();
     if (kind === 'video' && counts.videos >= 3) { alert('最多添加3个视频'); return false; }
     if (kind !== 'video' && counts.images >= 10) { alert('最多添加10张图片'); return false; }
+    leaveTaskItemIfNeeded();
     const url = API.imageUrl ? API.imageUrl(rel) : rel;
     const html = kind === 'video'
       ? `<figure class="doc-media doc-video" contenteditable="false" data-src="${rel}" data-kind="video"><video src="${url}" muted playsinline preload="metadata"></video><span class="doc-play">▶</span></figure>`
@@ -351,10 +359,61 @@ function createRichEditor(host, options) {
   function currentBlockEl() {
     let el = selectionAnchorEl();
     while (el && el !== surface) {
-      if (el.nodeType === 1 && /^(P|DIV|LI|H[1-6])$/i.test(el.tagName)) return el;
+      if (el.nodeType === 1) {
+        // 待办壳不能当「当前块」去 replace/innerHTML，否则会拆掉勾选结构
+        if (el.classList && el.classList.contains('task-check')) {
+          el = el.parentElement;
+          continue;
+        }
+        if (el.classList && el.classList.contains('task-item')) {
+          const p = el.querySelector('.task-item-body > p') || el.querySelector('.task-item-body p');
+          if (p) return p;
+          const body = el.querySelector('.task-item-body');
+          if (body) {
+            el = body;
+            continue;
+          }
+        }
+        if (el.classList && el.classList.contains('task-item-body')) {
+          const p = el.querySelector(':scope > p') || el.querySelector('p');
+          if (p) return p;
+          el = el.parentElement;
+          continue;
+        }
+        if (/^(P|DIV|LI|H[1-6])$/i.test(el.tagName)) return el;
+      }
       el = el.parentElement;
     }
-    return surface.querySelector('p') || surface;
+    // 禁止 surface.querySelector('p')：会误命中文首段，加粗空段时改错行甚至整页被清
+    ensureCaretSinks();
+    const sel = window.getSelection();
+    if (sel && sel.anchorNode && surface.contains(sel.anchorNode)) {
+      let n = sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode;
+      while (n && n !== surface) {
+        if (n.nodeType === 1 && /^(P|DIV|LI|H[1-6])$/i.test(n.tagName)
+          && !(n.classList && (n.classList.contains('task-item') || n.classList.contains('task-item-body') || n.classList.contains('task-check')))) {
+          return n;
+        }
+        n = n.parentElement;
+      }
+    }
+    let p = surface.querySelector(':scope > p');
+    if (!p) {
+      p = document.createElement('p');
+      p.innerHTML = '<br>';
+      surface.insertBefore(p, surface.firstChild);
+    }
+    return p;
+  }
+
+  /** 插图 / 有序列表前：先退出待办项，避免 figure/ol 嵌进 task-item-body */
+  function leaveTaskItemIfNeeded() {
+    if (typeof promoteNestedTaskLists === 'function') promoteNestedTaskLists();
+    const li = closestTaskItem();
+    if (!li) return false;
+    breakOutOfTaskItem(li, { keepContent: true });
+    cleanupEmptyListShells();
+    return true;
   }
 
   function inlineSelector(kind) {
@@ -393,13 +452,11 @@ function createRichEditor(host, options) {
 
     if (hasShell) {
       unwrapEmptyInlines(kind, block);
-      unwrapEmptyInlines(kind, surface);
-      if (block && block !== surface) {
-        block.innerHTML = '<br>';
-        placeCaretIn(block, false);
-      } else {
-        surface.innerHTML = '<p><br></p>';
-        placeCaretIn(surface.querySelector('p'), false);
+      // 只清空壳，绝不 surface.innerHTML=''（会毁掉列表/图片）
+      const target = (block && block !== surface) ? block : currentBlockEl();
+      if (target && target !== surface) {
+        target.innerHTML = '<br>';
+        placeCaretIn(target, false);
       }
       try {
         if (document.queryCommandState(cmd)) document.execCommand(cmd);
@@ -410,8 +467,8 @@ function createRichEditor(host, options) {
           void surface.offsetWidth;
           surface.contentEditable = 'true';
           surface.focus();
-          const p = surface.querySelector('p') || block;
-          if (p) {
+          const p = (target && target.isConnected ? target : currentBlockEl());
+          if (p && p !== surface) {
             if (!p.querySelector('br') && !visibleText(p)) p.innerHTML = '<br>';
             placeCaretIn(p, false);
           }
@@ -569,13 +626,10 @@ function createRichEditor(host, options) {
     const map = {
       bold: () => isInlineOn('bold'),
       italic: () => isInlineOn('italic'),
-      ul: () => {
-        try { if (document.queryCommandState('insertUnorderedList')) return true; } catch (_) {}
-        return selectionInTag('ul');
-      },
+      check: () => !!closestTaskItem(),
       ol: () => {
         try { if (document.queryCommandState('insertOrderedList')) return true; } catch (_) {}
-        return selectionInTag('ol');
+        return selectionInTag('ol') && !closestTaskItem();
       },
     };
     bar.querySelectorAll('[data-cmd]').forEach((btn) => {
@@ -592,12 +646,673 @@ function createRichEditor(host, options) {
     });
   }
 
+  function closestTaskItem(from) {
+    let el = from || selectionAnchorEl();
+    while (el && el !== surface) {
+      if (el.nodeType === 1 && el.matches && el.matches('li.task-item, li[data-type="taskItem"]')) {
+        return el;
+      }
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function closestTaskList(from) {
+    const item = closestTaskItem(from);
+    if (!item) return null;
+    return item.closest('ul.task-list, ul[data-type="taskList"]');
+  }
+
+  function makeTaskCheckBoxEl() {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('class', 'task-check-box');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('width', '15');
+    svg.setAttribute('height', '15');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    const rect = document.createElementNS(ns, 'rect');
+    rect.setAttribute('class', 'task-check-rect');
+    rect.setAttribute('x', '1.5');
+    rect.setAttribute('y', '1.5');
+    rect.setAttribute('width', '13');
+    rect.setAttribute('height', '13');
+    rect.setAttribute('rx', '3');
+    rect.setAttribute('ry', '3');
+    rect.setAttribute('fill', '#ffffff');
+    rect.setAttribute('stroke', '#48484a');
+    rect.setAttribute('stroke-width', '1.75');
+    const tick = document.createElementNS(ns, 'path');
+    tick.setAttribute('class', 'task-check-tick');
+    tick.setAttribute('d', 'M4.2 8.2l2.4 2.4 5-5.2');
+    tick.setAttribute('fill', 'none');
+    tick.setAttribute('stroke', '#ffffff');
+    tick.setAttribute('stroke-width', '1.85');
+    tick.setAttribute('stroke-linecap', 'round');
+    tick.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(rect);
+    svg.appendChild(tick);
+    return svg;
+  }
+
+  function ensureTaskCheckBox(btn) {
+    if (!btn) return;
+    const existing = btn.querySelector('svg.task-check-box');
+    if (existing && existing.querySelector('.task-check-rect')) {
+      // 清掉旧版残留文字/方块字符，只留 SVG
+      [...btn.childNodes].forEach((n) => {
+        if (n !== existing) n.remove();
+      });
+      return;
+    }
+    btn.querySelectorAll('.task-check-box').forEach((n) => n.remove());
+    [...btn.childNodes].forEach((n) => n.remove());
+    btn.appendChild(makeTaskCheckBoxEl());
+  }
+
+  function makeTaskItemEl(checked, bodyHtml) {
+    const li = document.createElement('li');
+    li.className = 'task-item' + (checked ? ' is-checked' : '');
+    li.setAttribute('data-type', 'taskItem');
+    li.setAttribute('data-checked', checked ? 'true' : 'false');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'task-check';
+    btn.contentEditable = 'false';
+    btn.tabIndex = 0;
+    btn.setAttribute('role', 'checkbox');
+    btn.setAttribute('aria-checked', checked ? 'true' : 'false');
+    btn.setAttribute('aria-label', '完成此项');
+    btn.appendChild(makeTaskCheckBoxEl());
+    const body = document.createElement('div');
+    body.className = 'task-item-body';
+    body.innerHTML = bodyHtml || '<p><br></p>';
+    li.appendChild(btn);
+    li.appendChild(body);
+    return li;
+  }
+
+  /** 勾选按钮不可编辑；li/body 继承 surface，支持跨待办拖选。旧版 input 就地升级为 button */
+  function normalizeTaskItemEditability() {
+    surface.querySelectorAll('li.task-item, li[data-type="taskItem"]').forEach((li) => {
+      li.removeAttribute('contenteditable');
+      let btn = li.querySelector(':scope > .task-check');
+      const legacyInput = li.querySelector(':scope > label.task-check input[type="checkbox"], :scope > input[type="checkbox"]');
+      if (legacyInput && (!btn || btn.tagName === 'LABEL')) {
+        const checked = !!(legacyInput.checked || li.classList.contains('is-checked') || li.getAttribute('data-checked') === 'true');
+        const wrap = legacyInput.closest('label.task-check') || legacyInput;
+        const neu = document.createElement('button');
+        neu.type = 'button';
+        neu.className = 'task-check';
+        neu.contentEditable = 'false';
+        neu.tabIndex = 0;
+        neu.setAttribute('role', 'checkbox');
+        neu.setAttribute('aria-checked', checked ? 'true' : 'false');
+        neu.setAttribute('aria-label', '完成此项');
+        neu.appendChild(makeTaskCheckBoxEl());
+        wrap.replaceWith(neu);
+        btn = neu;
+        syncTaskItemChecked(li, checked);
+      }
+      if (btn) {
+        btn.contentEditable = 'false';
+        if (btn.tagName === 'BUTTON') {
+          btn.type = 'button';
+          btn.setAttribute('role', 'checkbox');
+          const checked = li.classList.contains('is-checked') || li.getAttribute('data-checked') === 'true';
+          syncTaskItemChecked(li, checked);
+          ensureTaskCheckBox(btn);
+        }
+      }
+      let body = li.querySelector(':scope > .task-item-body');
+      if (!body) {
+        body = document.createElement('div');
+        body.className = 'task-item-body';
+        [...li.childNodes].forEach((n) => {
+          if (n.nodeType === 1 && n.classList && n.classList.contains('task-check')) return;
+          if (n.nodeType === 1 && n.tagName === 'INPUT') return;
+          body.appendChild(n);
+        });
+        if (!body.childNodes.length) body.innerHTML = '<p><br></p>';
+        li.appendChild(body);
+      }
+      body.removeAttribute('contenteditable');
+    });
+  }
+
+  function taskItemIsEmpty(li) {
+    const body = li && li.querySelector('.task-item-body');
+    if (!body) return true;
+    if (body.querySelector('img,video,figure')) return false;
+    const t = String(body.textContent || '')
+      .replace(/[\u200b\u200c\u200d\ufeff]/g, '')
+      .replace(/\u00a0/g, ' ')
+      .trim();
+    return !t;
+  }
+
+  function placeCaretInTaskItem(li, atEnd) {
+    const body = li && li.querySelector('.task-item-body');
+    const p = body && (body.querySelector('p') || body.firstElementChild || body);
+    placeCaretIn(p, atEnd);
+  }
+
+  function isCaretAtStartOfTaskItem(li) {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount || !sel.isCollapsed) return false;
+    const body = li.querySelector('.task-item-body');
+    if (!body || !body.contains(sel.anchorNode)) return false;
+    try {
+      const pre = document.createRange();
+      pre.selectNodeContents(body);
+      pre.setEnd(sel.anchorNode, sel.anchorOffset);
+      const before = String(pre.toString() || '')
+        .replace(/[\u200b\u200c\u200d\ufeff]/g, '')
+        .replace(/\u00a0/g, ' ')
+        .trim();
+      return !before;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
+   * 退出当前这一条待办 → 普通段落（列表在此处拆开）。
+   * Notion / Linear 同款：空项 Enter、行首 Backspace、再点「待办」都走这里。
+   */
+  function breakOutOfTaskItem(li, { keepContent = false } = {}) {
+    const list = li && li.closest('ul.task-list, ul[data-type="taskList"]');
+    if (!list || !li) return null;
+    const items = [...list.querySelectorAll(':scope > li.task-item')];
+    const idx = items.indexOf(li);
+    if (idx < 0) return null;
+
+    const afterItems = items.slice(idx + 1);
+    const body = li.querySelector('.task-item-body');
+    const p = document.createElement('p');
+    if (keepContent && body && !taskItemIsEmpty(li)) {
+      // 把正文挪进段落
+      const first = body.firstElementChild;
+      if (first && first.tagName === 'P' && body.children.length === 1) {
+        p.innerHTML = first.innerHTML || '<br>';
+      } else {
+        while (body.firstChild) p.appendChild(body.firstChild);
+        if (!p.innerHTML) p.innerHTML = '<br>';
+      }
+    } else {
+      p.innerHTML = '<br>';
+    }
+
+    li.remove();
+
+    // 后面还有待办：先挂到临时列表，插在段落后
+    let afterList = null;
+    if (afterItems.length) {
+      afterList = document.createElement('ul');
+      afterList.className = 'task-list';
+      afterList.setAttribute('data-type', 'taskList');
+      for (const it of afterItems) afterList.appendChild(it);
+    }
+
+    if (!list.querySelector(':scope > li.task-item')) {
+      // 前面也没了：整表换成段落（+ 后续列表）
+      if (afterList) list.replaceWith(p, afterList);
+      else list.replaceWith(p);
+    } else {
+      list.after(p);
+      if (afterList) p.after(afterList);
+    }
+
+    placeCaretIn(p, keepContent);
+    return p;
+  }
+
+  /** 有序/无序 li（非待办）：光标常在内部 p 上，必须升到 li，否则会把 task-list 嵌进 ol>li 导致勾选失效 */
+  function plainListItemHost(from) {
+    const el = from || selectionAnchorEl() || currentBlockEl();
+    if (!el || !el.closest) return null;
+    if (el.closest('li.task-item, li[data-type="taskItem"]')) return null;
+    const li = el.closest('ol > li, ul:not(.task-list) > li');
+    if (!li || !surface.contains(li)) return null;
+    if (li.classList && li.classList.contains('task-item')) return null;
+    return li;
+  }
+
+  /** 从待办/普通 li 抽出纯正文 HTML（去掉勾选控件，避免互转丢框或嵌套） */
+  function extractPlainBodyHtml(liOrBlock) {
+    if (!liOrBlock) return '<p><br></p>';
+    const body = liOrBlock.querySelector && liOrBlock.querySelector(':scope > .task-item-body');
+    if (body) {
+      const html = body.innerHTML || '<br>';
+      return /<p[\s>]/i.test(html) ? html : `<p>${html}</p>`;
+    }
+    const clone = liOrBlock.cloneNode(true);
+    if (clone.querySelectorAll) {
+      clone.querySelectorAll('.task-check, input[type="checkbox"], label.task-check').forEach((n) => n.remove());
+      const nestedBody = clone.querySelector('.task-item-body');
+      if (nestedBody) {
+        const html = nestedBody.innerHTML || '<br>';
+        return /<p[\s>]/i.test(html) ? html : `<p>${html}</p>`;
+      }
+    }
+    const only = clone.childElementCount === 1 && clone.firstElementChild;
+    if (only && only.tagName === 'P') {
+      const inner = only.innerHTML || '<br>';
+      return `<p>${inner}</p>`;
+    }
+    const raw = clone.innerHTML || '<br>';
+    if (/<p[\s>]/i.test(raw)) return raw;
+    return `<p>${raw}</p>`;
+  }
+
+  function listItemBodyHtml(liOrBlock) {
+    return extractPlainBodyHtml(liOrBlock);
+  }
+
+  function ensureTaskItemHasCheck(li) {
+    if (!li) return li;
+    if (li.querySelector(':scope > button.task-check, :scope > .task-check[role="checkbox"]')) {
+      normalizeTaskItemEditability();
+      return li;
+    }
+    const checked = li.classList.contains('is-checked') || li.getAttribute('data-checked') === 'true';
+    const neu = makeTaskItemEl(checked, extractPlainBodyHtml(li));
+    li.replaceWith(neu);
+    if (!neu.closest('ul.task-list, ul[data-type="taskList"]')) {
+      const ul = document.createElement('ul');
+      ul.className = 'task-list';
+      ul.setAttribute('data-type', 'taskList');
+      neu.replaceWith(ul);
+      ul.appendChild(neu);
+    }
+    normalizeTaskItemEditability();
+    return neu;
+  }
+
+  /** 整份待办列表 → 有序列表（勾选状态记在 data-was-checked，可互转还原） */
+  function convertTaskListToOrdered(taskLi) {
+    const list = taskLi && taskLi.closest('ul.task-list, ul[data-type="taskList"]');
+    if (!list) return null;
+    const items = [...list.querySelectorAll(':scope > li.task-item, :scope > li[data-type="taskItem"]')];
+    if (!items.length) return null;
+    const idx = Math.max(0, items.indexOf(taskLi));
+    const ol = document.createElement('ol');
+    for (const it of items) {
+      const oli = document.createElement('li');
+      const checked = it.classList.contains('is-checked') || it.getAttribute('data-checked') === 'true';
+      if (checked) oli.setAttribute('data-was-checked', 'true');
+      oli.innerHTML = extractPlainBodyHtml(it);
+      ol.appendChild(oli);
+    }
+    list.replaceWith(ol);
+    const focus = ol.children[Math.min(idx, ol.children.length - 1)];
+    const p = focus && (focus.querySelector('p') || focus);
+    if (p) placeCaretIn(p, true);
+    promoteNestedTaskLists();
+    cleanupEmptyListShells();
+    return ol;
+  }
+
+  /** 整份普通 ol/ul → 待办列表（还原 data-was-checked） */
+  function convertPlainListToTask(plainLi) {
+    const list = plainLi && plainLi.parentElement;
+    if (!list || (list.tagName !== 'OL' && list.tagName !== 'UL')) return null;
+    if (list.classList && list.classList.contains('task-list')) return null;
+    const items = [...list.children].filter((c) => c.tagName === 'LI');
+    if (!items.length) return null;
+    const idx = Math.max(0, items.indexOf(plainLi));
+    const ul = document.createElement('ul');
+    ul.className = 'task-list';
+    ul.setAttribute('data-type', 'taskList');
+    let focusItem = null;
+    items.forEach((oli, i) => {
+      const checked = oli.getAttribute('data-was-checked') === 'true';
+      const ti = makeTaskItemEl(checked, extractPlainBodyHtml(oli));
+      ul.appendChild(ti);
+      if (i === idx) focusItem = ti;
+    });
+    list.replaceWith(ul);
+    promoteNestedTaskLists();
+    normalizeTaskItemEditability();
+    if (focusItem) placeCaretInTaskItem(focusItem, true);
+    cleanupEmptyListShells();
+    return ul;
+  }
+
+  function convertOrderedListToTask(plainLi) {
+    return convertPlainListToTask(plainLi);
+  }
+
+  /** 清掉转换后残留的空 ol/ul/li 壳 */
+  function cleanupEmptyListShells() {
+    let guard = 0;
+    while (guard++ < 8) {
+      let removed = false;
+      surface.querySelectorAll('li').forEach((li) => {
+        if (!li.isConnected || !surface.contains(li)) return;
+        if (li.classList && li.classList.contains('task-item')) return;
+        if (li.querySelector('img,video,figure,.task-list,.task-item')) return;
+        const t = String(li.textContent || '').replace(/[\u200b\ufeff]/g, '').trim();
+        if (t) return;
+        const parent = li.parentElement;
+        li.remove();
+        removed = true;
+        if (parent && (parent.tagName === 'OL' || parent.tagName === 'UL')
+          && !parent.classList.contains('task-list')
+          && !parent.querySelector('li')) {
+          parent.remove();
+        }
+      });
+      surface.querySelectorAll('ol, ul:not(.task-list)').forEach((list) => {
+        if (!list.isConnected || !surface.contains(list)) return;
+        if (!list.querySelector('li')) {
+          list.remove();
+          removed = true;
+        }
+      });
+      if (!removed) break;
+    }
+  }
+
+  /**
+   * 待办被嵌进 ol/ul（含直接子级 ul.task-list）时抬到顶层。
+   * 否则父级 padding-left 会看起来像「待办前多出缩进」。
+   */
+  function promoteNestedTaskLists() {
+    // ol > ul.task-list / ul > ul.task-list（多行转换误替换 li 时常见）
+    for (const tl of [...surface.querySelectorAll('ol > ul.task-list, ul:not(.task-list) > ul.task-list')]) {
+      if (!tl.isConnected) continue;
+      const parent = tl.parentElement;
+      if (!parent) continue;
+      if (parent.children.length === 1) parent.replaceWith(tl);
+      else parent.before(tl);
+    }
+    const nested = [...surface.querySelectorAll('ol > li .task-list, ul:not(.task-list) > li .task-list')];
+    for (const tl of nested) {
+      if (!tl.isConnected) continue;
+      const hostLi = tl.closest('ol > li, ul:not(.task-list) > li');
+      if (!hostLi || hostLi.classList.contains('task-item')) continue;
+      const parentList = hostLi.parentElement;
+      const onlyTask = [...hostLi.childNodes].every((n) => {
+        if (n === tl || (n.contains && n.contains(tl))) return true;
+        if (n.nodeType === 3 && !String(n.textContent || '').trim()) return true;
+        return false;
+      });
+      if (parentList && parentList.children.length === 1 && onlyTask) {
+        parentList.replaceWith(tl);
+      } else if (onlyTask) {
+        hostLi.replaceWith(tl);
+      } else {
+        hostLi.parentNode.insertBefore(tl, hostLi);
+      }
+    }
+    cleanupEmptyListShells();
+  }
+
+  function isTaskItemEl(el) {
+    return !!(el && el.classList
+      && (el.classList.contains('task-item') || el.getAttribute('data-type') === 'taskItem'));
+  }
+
+  /** 选区覆盖的可转块：顶层段落 / 普通 li / 待办 li（多行选中时全部纳入） */
+  function selectedConvertibleBlocks() {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) {
+      const one = closestTaskItem() || plainListItemHost() || currentBlockEl();
+      return one && one !== surface ? [one] : [];
+    }
+    const range = sel.getRangeAt(0);
+    if (!surface.contains(range.commonAncestorContainer)) {
+      const one = closestTaskItem() || plainListItemHost() || currentBlockEl();
+      return one && one !== surface ? [one] : [];
+    }
+    if (range.collapsed) {
+      const one = closestTaskItem() || plainListItemHost() || currentBlockEl();
+      return one && one !== surface ? [one] : [];
+    }
+    const units = [];
+    const pushIfHit = (el) => {
+      if (!el || !surface.contains(el)) return;
+      try {
+        if (range.intersectsNode(el)) units.push(el);
+      } catch (_) { /* ignore */ }
+    };
+    for (const child of [...surface.children]) {
+      if (!child || child.nodeType !== 1) continue;
+      if (child.tagName === 'UL' || child.tagName === 'OL') {
+        for (const li of [...child.children]) {
+          if (li.tagName === 'LI') pushIfHit(li);
+        }
+      } else if (/^(P|DIV|H[1-6])$/i.test(child.tagName)) {
+        pushIfHit(child);
+      }
+    }
+    if (units.length) return units;
+    const one = closestTaskItem() || plainListItemHost() || currentBlockEl();
+    return one && one !== surface ? [one] : [];
+  }
+
+  /** 把多个块合成一份待办列表（勿把 ul 塞进 ol/li，否则会带着父级缩进） */
+  function convertBlocksToTaskList(blocks) {
+    const items = (blocks || []).filter((b) => b && b.isConnected);
+    if (!items.length) return null;
+    const ul = document.createElement('ul');
+    ul.className = 'task-list';
+    ul.setAttribute('data-type', 'taskList');
+    let focusItem = null;
+    for (const block of items) {
+      const checked = isTaskItemEl(block)
+        ? (block.classList.contains('is-checked') || block.getAttribute('data-checked') === 'true')
+        : block.getAttribute('data-was-checked') === 'true';
+      const ti = makeTaskItemEl(!!checked, extractPlainBodyHtml(block));
+      ul.appendChild(ti);
+      if (!focusItem) focusItem = ti;
+    }
+
+    const first = items[0];
+    const parent = first.parentElement;
+    const sameParent = items.every((b) => b.parentElement === parent);
+    const parentIsPlainList = !!(parent
+      && (parent.tagName === 'OL' || parent.tagName === 'UL')
+      && !(parent.classList && parent.classList.contains('task-list')));
+    const parentIsTaskList = !!(parent && parent.classList && parent.classList.contains('task-list'));
+
+    if (sameParent && (parentIsPlainList || parentIsTaskList) && items.every((b) => b.tagName === 'LI')) {
+      const allLis = [...parent.children].filter((c) => c.tagName === 'LI');
+      if (items.length >= allLis.length) {
+        // 整表替换：ol/ul → task-list，避免嵌套缩进
+        parent.replaceWith(ul);
+      } else {
+        // 部分项：插到列表外侧，再删选中项
+        parent.before(ul);
+        for (const b of items) {
+          if (b.isConnected) b.remove();
+        }
+        if (!parent.querySelector('li')) parent.remove();
+      }
+    } else if (first.tagName === 'LI' && parentIsPlainList) {
+      parent.before(ul);
+      for (const b of items) {
+        if (b.isConnected) b.remove();
+      }
+      if (parent.isConnected && !parent.querySelector('li')) parent.remove();
+    } else {
+      first.replaceWith(ul);
+      for (let i = 1; i < items.length; i++) {
+        if (items[i].isConnected) items[i].remove();
+      }
+    }
+
+    promoteNestedTaskLists();
+    cleanupEmptyListShells();
+    normalizeTaskItemEditability();
+    if (focusItem) placeCaretInTaskItem(focusItem, true);
+    return ul;
+  }
+
+  function toggleTaskList() {
+    promoteNestedTaskLists();
+    normalizeTaskItemEditability();
+    const blocks = selectedConvertibleBlocks();
+
+    // 多行选中：整批转待办；若已全是待办则整批退出
+    if (blocks.length > 1) {
+      if (blocks.every(isTaskItemEl)) {
+        for (let i = blocks.length - 1; i >= 0; i--) {
+          breakOutOfTaskItem(blocks[i], { keepContent: true });
+        }
+        cleanupEmptyListShells();
+        emit();
+        return;
+      }
+      convertBlocksToTaskList(blocks);
+      emit();
+      return;
+    }
+
+    const curItem = closestTaskItem();
+    if (curItem) {
+      // 已在待办但勾选框丢了：补回，不要当成「退出」
+      if (!curItem.querySelector(':scope > button.task-check, :scope > .task-check[role="checkbox"]')) {
+        const fixed = ensureTaskItemHasCheck(curItem);
+        if (fixed) placeCaretInTaskItem(fixed, true);
+        emit();
+        return;
+      }
+      // 再点待办：退出成普通段
+      breakOutOfTaskItem(curItem, { keepContent: true });
+      cleanupEmptyListShells();
+      emit();
+      return;
+    }
+    // 普通 ol/ul 光标在单项上 → 整表变待办
+    const listHost = plainListItemHost();
+    if (listHost && listHost.parentElement
+      && (listHost.parentElement.tagName === 'OL' || listHost.parentElement.tagName === 'UL')
+      && !(listHost.parentElement.classList && listHost.parentElement.classList.contains('task-list'))) {
+      convertPlainListToTask(listHost);
+      emit();
+      return;
+    }
+    let block = (blocks[0] && blocks[0] !== surface) ? blocks[0] : (listHost || currentBlockEl());
+    const list = document.createElement('ul');
+    list.className = 'task-list';
+    list.setAttribute('data-type', 'taskList');
+
+    const bodyHtml = (block && block !== surface)
+      ? listItemBodyHtml(block)
+      : '<p><br></p>';
+    const li = makeTaskItemEl(false, bodyHtml);
+    list.appendChild(li);
+
+    if (!block || block === surface) {
+      surface.appendChild(list);
+      normalizeTaskItemEditability();
+      placeCaretInTaskItem(li, false);
+      emit();
+      return;
+    }
+    block.replaceWith(list);
+    cleanupEmptyListShells();
+    normalizeTaskItemEditability();
+    placeCaretInTaskItem(li, true);
+    emit();
+  }
+
+  function toggleOrderedList() {
+    promoteNestedTaskLists();
+    const taskLi = closestTaskItem();
+    if (taskLi) {
+      // 待办 → 有序：整表转换，不用 execCommand
+      convertTaskListToOrdered(taskLi);
+      emit();
+      return;
+    }
+    try { document.execCommand('insertOrderedList'); } catch (_) { /* ignore */ }
+  }
+
+  function handleTaskItemEnter(li) {
+    if (!li) return;
+    // 空项再 Enter → 退出待办，变成普通段落（可继续写或切「1. 列表」）
+    if (taskItemIsEmpty(li)) {
+      breakOutOfTaskItem(li, { keepContent: false });
+      emit();
+      return;
+    }
+    const neu = makeTaskItemEl(false, '<p><br></p>');
+    li.after(neu);
+    placeCaretInTaskItem(neu, false);
+    emit();
+  }
+
+  /** 行首 Backspace：空项直接退出；有内容则把该项降成普通段 */
+  function handleTaskItemBackspace(li) {
+    if (!li || !isCaretAtStartOfTaskItem(li)) return false;
+    breakOutOfTaskItem(li, { keepContent: !taskItemIsEmpty(li) });
+    emit();
+    return true;
+  }
+
+  function closestOrderedLi() {
+    if (closestTaskItem()) return null;
+    const el = selectionAnchorEl();
+    if (!el || !el.closest) return null;
+    const li = el.closest('ol > li');
+    if (!li || !surface.contains(li)) return null;
+    return li;
+  }
+
+  function orderedLiIsEmpty(li) {
+    if (!li) return true;
+    if (li.querySelector('img,video,figure')) return false;
+    const t = String(li.textContent || '')
+      .replace(/[\u200b\u200c\u200d\ufeff]/g, '')
+      .replace(/\u00a0/g, ' ')
+      .trim();
+    return !t;
+  }
+
+  /** 有序列表空项 Enter → 退出成普通段（与待办一致，避免卡在 1. 2. 里） */
+  function handleOrderedLiEnter(li) {
+    const list = li && li.parentElement;
+    if (!list || list.tagName !== 'OL') return;
+    if (!orderedLiIsEmpty(li)) {
+      // 交给浏览器默认：续下一项
+      return false;
+    }
+    const p = document.createElement('p');
+    p.innerHTML = '<br>';
+    const only = list.children.length <= 1;
+    if (only) list.replaceWith(p);
+    else {
+      li.remove();
+      list.after(p);
+    }
+    placeCaretIn(p, false);
+    emit();
+    return true;
+  }
+
+  function syncTaskItemChecked(li, checked) {
+    if (!li) return;
+    const on = !!checked;
+    li.setAttribute('data-checked', on ? 'true' : 'false');
+    li.classList.toggle('is-checked', on);
+    const btn = li.querySelector('.task-check[role="checkbox"], button.task-check');
+    if (btn) btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    const input = li.querySelector('input[type="checkbox"]');
+    if (input) input.checked = on;
+  }
+
   function runFormat(cmd) {
     try { document.execCommand('styleWithCSS', false, false); } catch (_) {}
     if (cmd === 'bold') toggleInline('bold');
     else if (cmd === 'italic') toggleInline('italic');
-    else if (cmd === 'ul') document.execCommand('insertUnorderedList');
-    else if (cmd === 'ol') document.execCommand('insertOrderedList');
+    else if (cmd === 'check') toggleTaskList();
+    else if (cmd === 'ol') {
+      toggleOrderedList();
+    }
     else if (cmd === 'image') {
       if (typeof opts.onPickMedia === 'function') opts.onPickMedia();
     }
@@ -637,6 +1352,40 @@ function createRichEditor(host, options) {
     ensureMediaAttrs();
     ensureCaretSinks();
     emit();
+  });
+
+  function toggleTaskCheckFromHit(hit) {
+    if (!hit || !surface.contains(hit)) return;
+    // 先定位 li，再 normalize（升级会替换 hit，不能先替换再 closest）
+    const li = hit.closest('li.task-item, li[data-type="taskItem"]');
+    if (!li || !surface.contains(li)) return;
+    promoteNestedTaskLists();
+    normalizeTaskItemEditability();
+    if (!li.isConnected || !surface.contains(li)) return;
+    const next = !li.classList.contains('is-checked');
+    syncTaskItemChecked(li, next);
+    emit();
+  }
+
+  // 勾选按钮：只认 class，避免原生 checkbox 二次翻转
+  surface.addEventListener('click', (e) => {
+    const hit = e.target && e.target.closest && e.target.closest(
+      'button.task-check, .task-check[role="checkbox"], li.task-item input[type="checkbox"]'
+    );
+    if (!hit || !surface.contains(hit)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    toggleTaskCheckFromHit(hit);
+  });
+  surface.addEventListener('keydown', (e) => {
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    const hit = e.target && e.target.closest && e.target.closest(
+      'button.task-check, .task-check[role="checkbox"]'
+    );
+    if (!hit || !surface.contains(hit)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    toggleTaskCheckFromHit(hit);
   });
   let selectedMedia = null;
   let resizeDrag = null;
@@ -1012,7 +1761,12 @@ function createRichEditor(host, options) {
         return;
       }
     }
-    setTimeout(() => { ensureMediaAttrs(); ensureCaretSinks(); emit(); }, 0);
+    setTimeout(() => {
+      ensureMediaAttrs();
+      ensureCaretSinks();
+      normalizeTaskItemEditability();
+      emit();
+    }, 0);
   });
   surface.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
@@ -1130,6 +1884,26 @@ function createRichEditor(host, options) {
       deselectMedia();
       return;
     }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      const taskLi = closestTaskItem();
+      if (taskLi) {
+        e.preventDefault();
+        handleTaskItemEnter(taskLi);
+        return;
+      }
+      const olLi = closestOrderedLi();
+      if (olLi && handleOrderedLiEnter(olLi)) {
+        e.preventDefault();
+        return;
+      }
+    }
+    if (e.key === 'Backspace') {
+      const taskLi = closestTaskItem();
+      if (taskLi && handleTaskItemBackspace(taskLi)) {
+        e.preventDefault();
+        return;
+      }
+    }
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowLeft' && e.key !== 'ArrowDown' && e.key !== 'ArrowRight' && e.key !== 'Enter') return;
     const sel = window.getSelection();
     if (!sel || !sel.rangeCount) return;
@@ -1222,10 +1996,12 @@ function createRichEditor(host, options) {
     pending.length = 0;
     const html = docToHtml(doc || { type: 'doc', content: [{ type: 'paragraph' }] }, {
       pendingPreview: pendingPreview || {},
+      editorShell: true,
     });
     surface.innerHTML = html || '<p><br></p>';
     ensureMediaAttrs();
     ensureCaretSinks();
+    normalizeTaskItemEditability();
     emit();
   }
 
