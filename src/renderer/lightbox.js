@@ -238,7 +238,7 @@ async function runMediaOcr(local) {
   // 识别中：若灯箱已打开则交给 runLightboxOcr 展开面板；否则仍要先打开对应图片
   const src = srcFromMediaLocal(local);
   if (!src) {
-    alert('无法识别该图片');
+    toastFail('无法识别该图片');
     return;
   }
   const overlay = $('#lightboxOverlay');
@@ -250,7 +250,7 @@ async function runMediaOcr(local) {
   }
   await refreshLightboxOcrEntry();
   if (!lb.ocrAvailable) {
-    alert('请先在设置中安装并开启「文字识别」插件');
+    toastFail('请先在设置中安装并开启「文字识别」插件');
     return;
   }
   await runLightboxOcr();

@@ -430,9 +430,14 @@
     </div>
   </div>
 
+  <div id="appToast" class="app-toast" role="status" aria-live="polite" hidden></div>
+
   <div id="clipQuickBar" class="clip-quick-bar hidden" role="status" aria-live="polite">
     <div class="clip-quick-main">
-      <img id="clipQuickThumb" class="clip-quick-thumb" alt="" hidden>
+      <span id="clipQuickThumbSlot" class="clip-quick-thumb-slot is-placeholder" hidden>
+        <svg class="clip-quick-thumb-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="5.5" cy="6" r="1.1" fill="currentColor"/><path d="M2.5 11.5l3.2-3.1 2.1 2 2-2.2 3.7 3.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        <img id="clipQuickThumb" class="clip-quick-thumb" alt="" hidden>
+      </span>
       <span id="clipQuickText" class="clip-quick-text"></span>
       <div class="clip-quick-actions">
         <button type="button" id="clipQuickApply" class="clip-quick-apply">填入新建</button>
@@ -460,6 +465,7 @@
   <script src="ui.js"></script>
   <script src="modalDrag.js"></script>
   <script src="search.js"></script>
+  <script src="toast.js"></script>
   <script src="dropFiles.js"></script>
   <script src="pasteContent.js"></script>
   <script src="state.js"></script>

@@ -222,11 +222,11 @@ function createRichEditor(host, options) {
     const counts = countKinds();
     if (kind === 'video') {
       if (counts.videos >= (typeof MAX_NEW_VIDEOS !== 'undefined' ? MAX_NEW_VIDEOS : 3)) {
-        alert('最多添加3个视频');
+        if (typeof noticeDrop === 'function') noticeDrop('视频已达 3 个上限');
         return false;
       }
     } else if (counts.images >= (typeof MAX_NEW_IMAGES !== 'undefined' ? MAX_NEW_IMAGES : 10)) {
-      alert('最多添加10张图片');
+      if (typeof noticeDrop === 'function') noticeDrop('图片已达 10 张上限');
       return false;
     }
     // 待办项内插图会嵌进 li，保存/编辑易乱；先降成普通段再插
@@ -268,8 +268,14 @@ function createRichEditor(host, options) {
 
   function insertExistingRel(kind, rel) {
     const counts = countKinds();
-    if (kind === 'video' && counts.videos >= 3) { alert('最多添加3个视频'); return false; }
-    if (kind !== 'video' && counts.images >= 10) { alert('最多添加10张图片'); return false; }
+    if (kind === 'video' && counts.videos >= 3) {
+      if (typeof noticeDrop === 'function') noticeDrop('视频已达 3 个上限');
+      return false;
+    }
+    if (kind !== 'video' && counts.images >= 10) {
+      if (typeof noticeDrop === 'function') noticeDrop('图片已达 10 张上限');
+      return false;
+    }
     leaveTaskItemIfNeeded();
     const url = API.imageUrl ? API.imageUrl(rel) : rel;
     const html = kind === 'video'

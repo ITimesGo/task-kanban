@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { app, clipboard } = require('electron');
+const { app, clipboard, nativeImage } = require('electron');
 const ocr = require('./ocr');
 const ocrIndex = require('./ocrIndex');
 
@@ -189,7 +189,7 @@ function assertOcrReady() {
   return { ok: true };
 }
 
-const { getClipboardSequenceNumber } = require('./clipboardSeq');
+const { getClipboardSequenceNumber, clipboardHasBitmap } = require('./clipboardSeq');
 
 function imageLooksPresent(formats) {
   return (formats || []).some((f) => /png|jpe?g|bmp|gif|webp|dib|bitmap|image/i.test(String(f)));
@@ -248,23 +248,48 @@ function textLooksPresent(formats) {
   return (formats || []).some((f) => /text|html|rtf|string/i.test(String(f)));
 }
 
+/** 资源管理器复制图片文件时，剪贴板常只有路径文本，没有位图格式 */
+function imageFilePathFromText(raw) {
+  const text = String(raw || '').trim().replace(/^"(.*)"$/, '$1');
+  if (!text || /[\r\n]/.test(text)) return '';
+  if (!/^([a-zA-Z]:\\|\\\\).+\.(jpe?g|png|bmp|gif|webp)$/i.test(text)) return '';
+  return text;
+}
+
+function imageFromFilePath(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  try {
+    const img = nativeImage.createFromPath(filePath);
+    if (!img || img.isEmpty()) return null;
+    return img;
+  } catch (_) {
+    return null;
+  }
+}
+
 /** 探测时可内联带回的正文上限；更大则只带预览，填入时再 peek */
 const PROBE_TEXT_INLINE_MAX = 100 * 1024;
 
 /**
- * 轻量探测：序号 + formats；文字可 readText（通常很快），图片绝不 readImage。
- * 轮询 / 从后台恢复用；大图缩略图仍由 clipboardPeek 在悬停或填入时再读。
+ * 轻量探测：序号、格式名、必要时 readText。绝不 readImage。
+ * 切回前台只在序号变化后才走到这里；缩略图由提示条稍后单独拉取。
  */
 function clipboardProbe(opts = {}) {
   const lastSeq = opts && opts.lastSeq != null ? Number(opts.lastSeq) : null;
+  const seqOnly = !!(opts && opts.seqOnly);
   try {
     const seq = getClipboardSequenceNumber();
     if (seq != null && lastSeq != null && Number.isFinite(lastSeq) && seq === lastSeq) {
       return { ok: true, unchanged: true, seq };
     }
+    // 切回前台只核序号。availableFormats / readText 在 Windows 上会同步占住主进程。
+    if (seqOnly) {
+      if (seq == null) return { ok: true, unchanged: true, seq: null };
+      return { ok: true, seqOnly: true, seq, changed: true };
+    }
     const formats = clipboard.availableFormats() || [];
     const seqPart = seq != null ? String(seq) : formats.join('|');
-    if (imageLooksPresent(formats)) {
+    if (imageLooksPresent(formats) || clipboardHasBitmap()) {
       return {
         ok: true,
         type: 'image',
@@ -278,21 +303,32 @@ function clipboardProbe(opts = {}) {
       // 有变化时才走到这里：读一次正文，提示条直接显示真实预览，避免占位文案闪一下再替换
       const raw = String(clipboard.readText() || '');
       const trimmed = raw.trim();
-      if (!trimmed) {
-        return { ok: true, type: 'empty', sig: '', seq };
+      const filePath = imageFilePathFromText(trimmed);
+      if (filePath) {
+        return {
+          ok: true,
+          type: 'image',
+          sig: `img:file:${seqPart}`,
+          seq,
+          light: true,
+          needsContent: true,
+          filePath,
+        };
       }
-      const preview = trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed;
-      const inline = raw.length <= PROBE_TEXT_INLINE_MAX;
-      return {
-        ok: true,
-        type: 'text',
-        sig: `txt:seq:${seqPart}`,
-        preview,
-        text: inline ? raw : '',
-        needsContent: !inline,
-        seq,
-        light: !inline,
-      };
+      if (trimmed) {
+        const preview = trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed;
+        const inline = raw.length <= PROBE_TEXT_INLINE_MAX;
+        return {
+          ok: true,
+          type: 'text',
+          sig: `txt:seq:${seqPart}`,
+          preview,
+          text: inline ? raw : '',
+          needsContent: !inline,
+          seq,
+          light: !inline,
+        };
+      }
     }
     return { ok: true, type: 'empty', sig: '', seq };
   } catch (err) {
@@ -305,7 +341,7 @@ let peekBusy = false;
 
 /**
  * 读取剪贴板内容（可能很重，会卡主进程）。
- * 仅允许用户主动操作（悬停预览 / 填入 / 放大）调用，切回前台禁止走这里。
+ * 提示条出现后拉缩略图、悬停、填入、放大时调用。切回前台的序号探测不要走这里。
  * opts.quality: 'thumb' | 'full'
  */
 function clipboardPeek(opts = {}) {
@@ -315,19 +351,21 @@ function clipboardPeek(opts = {}) {
   peekBusy = true;
   try {
     const seq = getClipboardSequenceNumber();
-    const formats = clipboard.availableFormats() || [];
-    if (imageLooksPresent(formats)) {
-      // readImage 对大图可阻塞数十秒；调用方必须已避开 resume 热路径
-      const img = clipboard.readImage();
-      if (img && !img.isEmpty()) {
-        const sig = imageSig(img);
-        const out = { ok: true, type: 'image', sig, seq };
-        if (withData) {
-          out.dataUrl = quality === 'full' ? imageFullDataUrl(img) : imageThumbDataUrl(img);
-          out.previewOnly = quality !== 'full';
-        }
-        return out;
+    let img = null;
+    const read = clipboard.readImage();
+    if (read && !read.isEmpty()) img = read;
+    if (!img) {
+      const filePath = imageFilePathFromText(clipboard.readText());
+      img = imageFromFilePath(filePath);
+    }
+    if (img) {
+      const sig = imageSig(img);
+      const out = { ok: true, type: 'image', sig, seq };
+      if (withData) {
+        out.dataUrl = quality === 'full' ? imageFullDataUrl(img) : imageThumbDataUrl(img);
+        out.previewOnly = quality !== 'full';
       }
+      return out;
     }
     const text = String(clipboard.readText() || '');
     const trimmed = text.trim();

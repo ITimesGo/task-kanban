@@ -72,7 +72,8 @@ async function toggleStatus(t, { skipUndo = false } = {}) {
     updated = await API.toggleStatus(t.id);
   } catch (err) {
     if (useUndo && typeof ui.releaseStatusAnim === 'function') ui.releaseStatusAnim(id);
-    throw err;
+    toastFail((err && err.message) || '状态更新失败');
+    return;
   }
   const idx = tasks.findIndex((x) => x.id === t.id);
   if (idx >= 0) tasks[idx] = updated;
@@ -453,7 +454,7 @@ function renderEditDetail() {
       }
       const res = await API.renameTag(state.id, next);
       if (!res.ok) {
-        alert(res.error || '保存失败');
+        toastFail(res.error || '保存失败');
         if (editTagRename && editTagRename.input === state.input) {
           try { state.input.focus(); } catch (_) { /* ignore */ }
         }
@@ -521,7 +522,7 @@ function renderEditDetail() {
     try {
       const res = await API.createTag(name);
       if (!res || !res.ok) {
-        alert((res && res.error) || '新增失败');
+        toastFail((res && res.error) || '新增失败');
         return;
       }
       const beforeIds = new Set(tagList.map((t) => t.id));
@@ -531,7 +532,7 @@ function renderEditDetail() {
       if (search) search.value = '';
       afterTagMutation(created ? { selectedId: created.id, selectEdit: true } : {});
     } catch (err) {
-      alert('新增失败：' + (err && err.message ? err.message : err));
+      toastFail('新增失败：' + (err && err.message ? err.message : err));
     }
   };
   const deleteTagFromEditPicker = async (id) => {
@@ -546,14 +547,14 @@ function renderEditDetail() {
     try {
       const res = await API.reorderTag(fromId, toId);
       if (!res || !res.ok) {
-        alert((res && res.error) || '调整顺序失败');
+        toastFail((res && res.error) || '调整顺序失败');
         syncEditTagOptions();
         return;
       }
       tagList = res.tags;
       afterTagMutation();
     } catch (err) {
-      alert('调整顺序失败：' + (err && err.message ? err.message : err));
+      toastFail('调整顺序失败：' + (err && err.message ? err.message : err));
       syncEditTagOptions();
     }
   };
@@ -740,7 +741,10 @@ function renderEditDetail() {
     if (!allFiles.length) return;
     for (const f of allFiles) {
       if (isImageFile(f)) {
-        if (f.size > MAX_EDIT_MB * 1024 * 1024) { alert(`图片超过${MAX_EDIT_MB}MB`); continue; }
+        if (f.size > MAX_EDIT_MB * 1024 * 1024) {
+          if (typeof noticeDrop === 'function') noticeDrop(`图片超过${MAX_EDIT_MB}MB`);
+          continue;
+        }
         const reader = new FileReader();
         reader.onload = () => { editEditor.insertMediaNode('image', reader.result); };
         reader.readAsDataURL(f);
@@ -751,7 +755,10 @@ function renderEditDetail() {
       } else {
         const p = resolveAttachmentDrop(f);
         if (p) {
-          if (editAttachments.length >= 10) { alert('最多添加10个附件'); continue; }
+          if (editAttachments.length >= 10) {
+            if (typeof noticeDrop === 'function') noticeDrop('附件已达 10 个上限');
+            continue;
+          }
           editAttachments.push(p);
           drawEditAttachments();
         }
@@ -774,61 +781,24 @@ function renderEditDetail() {
   document.getElementById('editAddFile').addEventListener('click', async () => {
     const paths = await API.pickAttachments();
     (paths || []).forEach((p) => {
-      if (editAttachments.length >= 10) { alert('最多添加10个附件'); return; }
+      if (editAttachments.length >= 10) {
+        if (typeof noticeDrop === 'function') noticeDrop('附件已达 10 个上限');
+        return;
+      }
       editAttachments.push(p);
     });
     drawEditAttachments();
   });
 
-  let saveHintTimer = 0;
   function setSaveBusy(busy) {
     const btn = document.getElementById('saveBtn');
     if (!btn) return;
-    // 只改 disabled，不改 textContent（避免冲掉气泡或闪字）
     btn.disabled = !!busy;
     btn.classList.toggle('is-saving', !!busy);
   }
-  /** 保存按钮上方：弹出 → 停留 → 缩回；ok=绿「已保存」，fail=红「保存失败」 */
   function flashSaveHint(ok = true) {
-    const wrap = document.querySelector('#detailActions .save-btn-wrap');
-    const btn = document.getElementById('saveBtn');
-    if (!wrap || !btn) return;
-    wrap.classList.add('is-hinting');
-    let tip = wrap.querySelector('.save-ok-hint');
-    if (!tip) {
-      tip = document.createElement('span');
-      tip.className = 'save-ok-hint';
-      tip.setAttribute('aria-live', 'polite');
-      wrap.appendChild(tip);
-    }
-    tip.classList.toggle('is-fail', !ok);
-    tip.textContent = ok ? '已保存' : '保存失败';
-    // 独立窗：内层 overflow 易裁切 absolute 气泡，改为 fixed 锚在按钮上方
-    if (window.__IS_EDIT_WINDOW__) {
-      const r = btn.getBoundingClientRect();
-      tip.classList.add('is-fixed');
-      tip.style.left = `${Math.round(r.left + r.width / 2)}px`;
-      tip.style.bottom = `${Math.round(window.innerHeight - r.top + 8)}px`;
-    } else {
-      tip.classList.remove('is-fixed');
-      tip.style.left = '';
-      tip.style.bottom = '';
-    }
-    tip.classList.remove('is-on', 'is-out');
-    void tip.offsetWidth;
-    tip.classList.add('is-on');
-    if (saveHintTimer) clearTimeout(saveHintTimer);
-    saveHintTimer = setTimeout(() => {
-      tip.classList.remove('is-on');
-      tip.classList.add('is-out');
-      saveHintTimer = setTimeout(() => {
-        tip.classList.remove('is-out', 'is-fail', 'is-fixed');
-        tip.style.left = '';
-        tip.style.bottom = '';
-        wrap.classList.remove('is-hinting');
-        saveHintTimer = 0;
-      }, 280);
-    }, 900);
+    if (typeof showToast !== 'function') return;
+    showToast(ok ? '已保存' : '保存失败', { tone: ok ? 'ok' : 'fail' });
   }
   function flashSaveOk() { flashSaveHint(true); }
   function flashSaveFail() { flashSaveHint(false); }
@@ -843,7 +813,7 @@ function renderEditDetail() {
         return isRel ? a : { srcPath: a, name: a.split(/[\\/]/).pop() };
       });
       if (isTaskContentEmpty({ doc: body.doc, attachments: editAtts })) {
-        alert('请至少输入文字、图片、视频或附件');
+        toastFail('请至少输入文字、图片、视频或附件');
         return false;
       }
       const onProgress = (d) => updateUploadProgress('editProgress', d);
@@ -924,11 +894,12 @@ function renderEditDetail() {
 }
 
 async function deleteTask() {
-  const ok = await showConfirm('确定将该任务移入回收站吗？可在设置中恢复。');
-  if (!ok) return;
   const id = editing && editing.id;
-  const res = await API.deleteTask(editing.id);
-  if (res && res.ok === false) { alert(res.error || '删除失败'); return; }
+  if (id == null) return;
+  const trashed = typeof trashTasksWithUndo === 'function'
+    ? await trashTasksWithUndo([id])
+    : { moved: [] };
+  if (!trashed.moved || !trashed.moved.length) return;
   editing = null;
   hideDetailOverlay(() => {
     disposeEditEditor();

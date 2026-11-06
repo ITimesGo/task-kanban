@@ -33,7 +33,7 @@ function commitCreateTagRename() {
     }
     const res = await API.renameTag(state.id, next);
     if (!res.ok) {
-      alert(res.error || '保存失败');
+      toastFail(res.error || '保存失败');
       if (createTagRename && createTagRename.input === state.input) {
         try { state.input.focus(); } catch (_) { /* ignore */ }
       }
@@ -111,7 +111,7 @@ async function createTagFromCreatePicker(name) {
   try {
     const res = await API.createTag(name);
     if (!res || !res.ok) {
-      alert((res && res.error) || '新增失败');
+      toastFail((res && res.error) || '新增失败');
       return;
     }
     const beforeIds = new Set(tagList.map((t) => t.id));
@@ -121,7 +121,7 @@ async function createTagFromCreatePicker(name) {
     if (search) search.value = '';
     afterTagMutation(created ? { selectedId: created.id, selectCreate: true } : {});
   } catch (err) {
-    alert('新增失败：' + (err && err.message ? err.message : err));
+    toastFail('新增失败：' + (err && err.message ? err.message : err));
   }
 }
 
@@ -138,14 +138,14 @@ async function reorderTagFromCreatePicker(fromId, toId) {
   try {
     const res = await API.reorderTag(fromId, toId);
     if (!res || !res.ok) {
-      alert((res && res.error) || '调整顺序失败');
+      toastFail((res && res.error) || '调整顺序失败');
       syncCreateTagFilterOptions();
       return;
     }
     tagList = res.tags;
     afterTagMutation();
   } catch (err) {
-    alert('调整顺序失败：' + (err && err.message ? err.message : err));
+    toastFail('调整顺序失败：' + (err && err.message ? err.message : err));
     syncCreateTagFilterOptions();
   }
 }
@@ -269,7 +269,10 @@ function renderNewAttachments() {
 
 function addAttachmentsToCreate(paths) {
   (paths||[]).forEach(function(p2){
-    if (newAttachments.length >= 10) { alert('最多添加10个附件'); return; }
+    if (newAttachments.length >= 10) {
+      if (typeof noticeDrop === 'function') noticeDrop('附件已达 10 个上限');
+      return;
+    }
     newAttachments.push({ path: p2, name: p2.split(/[\\/]/).pop() });
   });
   renderNewAttachments();
@@ -301,7 +304,7 @@ async function createTask() {
   try {
     const body = await createEditor.getPayload();
     if (isTaskContentEmpty({ doc: body.doc, attachments: atts })) {
-      alert('请至少输入文字、图片、视频或附件');
+      toastFail('请至少输入文字、图片、视频或附件');
       return;
     }
     const res = await API.createTask({
@@ -310,8 +313,9 @@ async function createTask() {
       attachments: atts,
       tags: newTags.slice(),
     });
-    if (!res.ok) { alert(res.error || '创建失败'); return; }
+    if (!res.ok) { toastFail(res.error || '创建失败'); return; }
     if (newTags.length) await API.setTaskTags(res.task.id, newTags);
+    const createdTags = newTags.slice();
     createEditor.clear();
     newMedia = [];
     newTags = [];
@@ -320,6 +324,15 @@ async function createTask() {
     renderNewTagSelect();
     updateCreateBtnState();
     await refresh();
+    let note = '已创建';
+    if (filter === 'done') note = '已创建，可在「待执行」中查看';
+    else if (Array.isArray(tagFilter) && tagFilter.length) {
+      const hit = createdTags.some((id) => tagFilter.some((x) => String(x) === String(id)));
+      if (!hit) note = '已创建，当前标签筛选下不可见';
+    } else if (String(searchQuery || '').trim()) {
+      note = '已创建';
+    }
+    if (typeof showToast === 'function') showToast(note, { tone: 'ok' });
   } finally {
     hideUploadProgress('createProgress');
   }
@@ -374,7 +387,10 @@ createPanel.addEventListener('drop', (e) => {
   let added = 0;
   for (const f of files) {
     if (isImageFile(f)) {
-      if (f.size > MAX_IMG_MB * 1024 * 1024) { alert(`图片超过${MAX_IMG_MB}MB`); continue; }
+      if (f.size > MAX_IMG_MB * 1024 * 1024) {
+        if (typeof noticeDrop === 'function') noticeDrop(`图片超过${MAX_IMG_MB}MB`);
+        continue;
+      }
       const reader = new FileReader();
       reader.onload = () => {
         if (!addImageToCreate(reader.result)) return;
@@ -397,7 +413,9 @@ createPanel.addEventListener('drop', (e) => {
     }
   }
   if (!added && files.length) {
-    alert('未能添加文件。视频请使用 mp4/webm/mov，或点「添加图片或视频」选择。');
+    if (typeof showToast === 'function') {
+      showToast('未能添加文件。视频请使用 mp4/webm/mov，或点「添加图片或视频」选择。', { tone: 'fail' });
+    }
   }
 });
 

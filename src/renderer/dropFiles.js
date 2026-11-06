@@ -42,7 +42,7 @@ function resolveImageDrop(file) {
   return new Promise((resolve) => {
     if (!file) { resolve(null); return; }
     if (file.size > MAX_IMG_BYTES) {
-      alert('图片超过10MB');
+      if (typeof noticeDrop === 'function') noticeDrop('图片超过10MB');
       resolve(null);
       return;
     }
@@ -62,12 +62,12 @@ function resolveImageDrop(file) {
 function resolveVideoDrop(file) {
   if (!file) return null;
   if (file.size > MAX_VID_BYTES) {
-    alert('视频超过200MB');
+    if (typeof noticeDrop === 'function') noticeDrop('视频超过200MB');
     return null;
   }
   const p = localPathOf(file);
   if (!p) {
-    alert('无法读取该视频的本地路径，请改用「添加图片或视频」按钮选择文件');
+    if (typeof noticeDrop === 'function') noticeDrop('无法读取该视频的本地路径');
     return null;
   }
   let previewUrl = '';

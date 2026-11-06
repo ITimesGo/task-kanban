@@ -26,6 +26,7 @@
   const bar = () => document.getElementById('clipQuickBar');
   const textEl = () => document.getElementById('clipQuickText');
   const thumbEl = () => document.getElementById('clipQuickThumb');
+  const thumbSlotEl = () => document.getElementById('clipQuickThumbSlot');
   const progressEl = () => document.getElementById('clipQuickCountdown');
   const fillEl = () => document.getElementById('clipQuickProgressFill');
 
@@ -133,29 +134,52 @@
     const el = bar();
     if (el) el.classList.add('hidden');
     pending = null;
+    const slot = thumbSlotEl();
+    if (slot) {
+      slot.hidden = true;
+      slot.classList.add('is-placeholder');
+      slot.classList.remove('is-loading');
+    }
     if (thumbEl()) {
       const th = thumbEl();
+      th.onload = null;
+      th.onerror = null;
       th.hidden = true;
       th.removeAttribute('src');
-      th.classList.remove('is-loading');
     }
     syncTargetLabel();
   }
 
   function paintThumb(dataUrl, { loading = false } = {}) {
     const thumb = thumbEl();
-    if (!thumb) return;
-    thumb.hidden = false;
+    const slot = thumbSlotEl();
+    if (!thumb || !slot) return;
+    slot.hidden = false;
+    slot.classList.add('is-placeholder');
+    slot.classList.toggle('is-loading', !!loading && !dataUrl);
+    thumb.hidden = true;
+    thumb.onload = null;
+    thumb.onerror = null;
+    thumb.removeAttribute('src');
     thumb.title = '点击放大看原图';
     thumb.setAttribute('role', 'button');
     thumb.tabIndex = 0;
-    thumb.classList.toggle('is-loading', !!loading);
-    if (dataUrl) {
-      thumb.src = dataUrl;
-      thumb.classList.remove('is-loading');
-    } else {
+    if (!dataUrl) return;
+    thumb.onload = () => {
+      thumb.onload = null;
+      thumb.onerror = null;
+      slot.classList.remove('is-placeholder', 'is-loading');
+      thumb.hidden = false;
+    };
+    thumb.onerror = () => {
+      thumb.onload = null;
+      thumb.onerror = null;
       thumb.removeAttribute('src');
-    }
+      thumb.hidden = true;
+      slot.classList.add('is-placeholder');
+      slot.classList.remove('is-loading');
+    };
+    thumb.src = dataUrl;
   }
 
   /**
@@ -232,10 +256,17 @@
     } else {
       // 先写真实预览再亮条，避免默认空文案或旧文案闪一帧
       t.textContent = `剪贴板：${payload.preview}`;
+      const slot = thumbSlotEl();
+      if (slot) {
+        slot.hidden = true;
+        slot.classList.add('is-placeholder');
+        slot.classList.remove('is-loading');
+      }
       if (thumb) {
+        thumb.onload = null;
+        thumb.onerror = null;
         thumb.hidden = true;
         thumb.removeAttribute('src');
-        thumb.classList.remove('is-loading');
       }
       const btn = document.getElementById('clipQuickApply');
       if (btn) btn.textContent = isEditTarget() ? '填入编辑' : '填入新建';
@@ -244,13 +275,26 @@
     scheduleAutoHide();
   }
 
+  function pausePollTimer() {
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+  }
+
+  function ensurePollTimer() {
+    if (enabled && !timer) timer = setInterval(poll, 2500);
+  }
+
   function scheduleResumePoll() {
     if (resumeTimer) clearTimeout(resumeTimer);
-    // 等合成层轻载门结束再 probe；绝不在这里 readImage / readText
+    pausePollTimer();
+    // 先只核剪贴板序号；正文/格式延后，避免和窗口恢复抢主进程
     resumeTimer = window.setTimeout(() => {
       resumeTimer = 0;
-      if (enabled) poll({ resume: true });
-    }, 900);
+      if (!enabled || document.hidden) return;
+      poll({ resume: true, seqOnly: true });
+    }, 1800);
   }
 
   /**
@@ -259,6 +303,7 @@
    */
   async function poll(opts = {}) {
     const resume = !!(opts && opts.resume);
+    const seqOnly = !!(opts && opts.seqOnly);
     if (!enabled || busy) return;
     if (document.hidden) return;
     if (!resume && typeof document.hasFocus === 'function' && !document.hasFocus()) return;
@@ -268,6 +313,7 @@
     if (lightbox && !lightbox.classList.contains('hidden')) return;
 
     busy = true;
+    let holdTimer = false;
     try {
       // 轻量探测：图片路径不 readImage，避免切回前台被大图卡死
       const probe = typeof API.clipboardProbe === 'function'
@@ -275,8 +321,21 @@
         : API.clipboardPeek;
       const res = await probe({
         lastSeq: lastSeq != null ? lastSeq : undefined,
+        seqOnly,
       });
       if (!res || !res.ok) return;
+      // 只核序号时先别记下新序号，否则紧接着的完整探测会误判成「未变化」，提示条不再出现
+      if (res.seqOnly) {
+        if (res.changed && !res.unchanged) {
+          window.setTimeout(() => {
+            if (enabled && !document.hidden) poll({ resume: true });
+          }, 600);
+        } else {
+          ensurePollTimer();
+        }
+        return;
+      }
+      const prevSeq = lastSeq;
       if (res.seq != null) lastSeq = res.seq;
       if (res.unchanged) {
         if (!primed) primed = true;
@@ -284,6 +343,16 @@
       }
 
       if (!res.sig || res.type === 'empty') {
+        // 后台刚复制的图，切回来第一次常常还读不到位图。先别把序号记死，隔一会儿再读。
+        const retry = Number(opts.retry) || 0;
+        if (resume && retry < 4) {
+          lastSeq = prevSeq;
+          holdTimer = true;
+          window.setTimeout(() => {
+            if (enabled && !document.hidden) poll({ resume: true, retry: retry + 1 });
+          }, 500);
+          return;
+        }
         lastSig = '';
         primed = true;
         return;
@@ -300,14 +369,20 @@
       lastSig = res.sig;
 
       if (res.type === 'image') {
-        // 只弹条；缩略图等用户悬停再 readImage（resume/轮询都一样）
+        const sig = res.sig;
         showBar({
           type: 'image',
-          sig: res.sig,
+          sig,
           light: true,
           previewOnly: true,
           needsContent: true,
         });
+        // 切回前台先让窗口能动，缩略图晚一点再解码，避免和大图抢主进程
+        const wait = resume ? 1800 : 0;
+        window.setTimeout(() => {
+          if (!pending || pending.type !== 'image' || pending.sig !== sig || pending.dataUrl) return;
+          scheduleThumbForPending(sig);
+        }, wait);
         return;
       }
       if (res.type === 'text') {
@@ -326,6 +401,7 @@
       /* ignore */
     } finally {
       busy = false;
+      if (resume && !seqOnly && !holdTimer) ensurePollTimer();
     }
   }
 
@@ -387,7 +463,7 @@
 
     const justEnabled = !enabled;
     enabled = true;
-    if (!timer) timer = setInterval(poll, 2500);
+    if (!document.hidden) ensurePollTimer();
     if (justEnabled || !primed) {
       lastSig = '';
       lastSeq = null;
@@ -451,8 +527,15 @@
   }
 
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) return;
     if (!enabled) return;
+    if (document.hidden) {
+      pausePollTimer();
+      if (resumeTimer) {
+        clearTimeout(resumeTimer);
+        resumeTimer = 0;
+      }
+      return;
+    }
     scheduleResumePoll();
   });
 

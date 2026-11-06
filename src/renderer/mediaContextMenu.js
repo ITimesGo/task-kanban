@@ -53,7 +53,7 @@
         return;
       }
       if (typeof API === 'undefined') {
-        alert('操作失败');
+        toastFail('操作失败');
         return;
       }
       let res;
@@ -64,9 +64,19 @@
       else return;
       if (!res) return;
       if (res.cancelled) return;
-      if (!res.ok) alert(res.error || '操作失败');
+      if (!res.ok) {
+        toastFail(res.error || '操作失败');
+        return;
+      }
+      const done = {
+        copy: '已复制',
+        saveAs: '已保存',
+        open: '已用默认程序打开',
+        showInFolder: '已在文件夹中显示',
+      };
+      if (done[id] && typeof showToast === 'function') showToast(done[id], { tone: 'ok' });
     } catch (err) {
-      alert((err && err.message) || '操作失败');
+      toastFail((err && err.message) || '操作失败');
     }
   }
 

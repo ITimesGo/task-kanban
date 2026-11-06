@@ -102,7 +102,10 @@ function bindContentPaste(opts) {
       void (async () => {
         const added = [];
         for (const f of imageFiles) {
-          if (f.size > maxBytes) { alert(`图片超过${maxMb}MB`); continue; }
+          if (f.size > maxBytes) {
+            if (typeof noticeDrop === 'function') noticeDrop(`图片超过${maxMb}MB`);
+            continue;
+          }
           const resolved = await resolveImageDrop(f);
           if (resolved) added.push(resolved);
         }
@@ -116,7 +119,7 @@ function bindContentPaste(opts) {
     let clip = null;
     try { clip = API.pasteImageSync(); } catch (_) { clip = null; }
     if (clip && clip.error) {
-      alert(clip.error);
+      if (typeof showToast === 'function') showToast(clip.error, { tone: 'fail' });
       e.preventDefault();
       return;
     }

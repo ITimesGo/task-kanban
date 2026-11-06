@@ -98,13 +98,20 @@ function showConfirmDialog(opts) {
   });
 }
 
-function showConfirm(text) {
+function showConfirm(text, opts) {
+  const o = opts || {};
+  const danger = o.danger !== false;
   return showConfirmDialog({
-    title: '确认操作',
+    title: o.title || '确认操作',
     message: text,
     buttons: [
       { label: '取消', value: false },
-      { label: '确认', value: true, className: 'danger' },
+      {
+        label: o.confirmLabel || '确认',
+        value: true,
+        className: danger ? 'danger' : 'primary',
+        primary: !danger,
+      },
     ],
   });
 }

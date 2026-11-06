@@ -257,7 +257,7 @@ async function runListExport(format, triggerBtn) {
   if (!format) return;
   const ids = exportTaskIdsForFormat();
   if (!ids.length) {
-    alert('没有可导出的勾选任务');
+    toastFail('没有可导出的勾选任务');
     return;
   }
   const selBtn = document.getElementById('selectionExportBtn');
@@ -276,13 +276,13 @@ async function runListExport(format, triggerBtn) {
       sortKey: sortKey || 'createdAt',
     });
     if (!res || !res.ok) {
-      if (res && res.error !== '已取消') alert(res.error || '导出失败');
+      if (res && res.error !== '已取消') toastFail(res.error || '导出失败');
       return;
     }
-    alert(`已导出 ${res.count || 0} 条：\n${res.path}`);
+    showToast(`已导出 ${res.count || 0} 条：${res.path || ''}`, { tone: 'ok', duration: 3200 });
     if (selectedTaskIds.size) clearSelection();
   } catch (err) {
-    alert((err && err.message) || '导出失败');
+    toastFail((err && err.message) || '导出失败');
   } finally {
     if (triggerBtn) triggerBtn.disabled = false;
     if (selBtn) {
@@ -293,52 +293,69 @@ async function runListExport(format, triggerBtn) {
   }
 }
 
+async function trashTasksWithUndo(ids) {
+  const list = [...new Set((ids || []).map((id) => String(id)))].filter(Boolean);
+  const moved = [];
+  const failed = [];
+  for (const id of list) {
+    try {
+      const res = await API.deleteTask(id);
+      if (res && res.ok === false) failed.push(res.error || id);
+      else moved.push(id);
+    } catch (err) {
+      failed.push((err && err.message) || String(id));
+    }
+  }
+  if (moved.length && typeof showToast === 'function') {
+    const n = moved.length;
+    showToast(n === 1 ? '已移入回收站' : `已移入回收站 ${n} 条`, {
+      tone: 'ok',
+      duration: 5000,
+      action: {
+        label: '撤销',
+        onClick: async () => {
+          let back = 0;
+          for (const id of moved) {
+            try {
+              const res = await API.restoreTrash(id);
+              if (!res || res.ok !== false) back += 1;
+            } catch (_) { /* ignore */ }
+          }
+          if (typeof refresh === 'function') await refresh();
+          if (back) showToast(back === 1 ? '已撤销' : `已撤销 ${back} 条`, { tone: 'ok' });
+          else toastFail('撤销失败');
+        },
+      },
+    });
+  }
+  if (failed.length && !moved.length) toastFail(failed[0] || '移入回收站失败');
+  else if (failed.length) toastFail(`${failed.length} 条未能移入回收站`);
+  return { moved, failed };
+}
+window.trashTasksWithUndo = trashTasksWithUndo;
+
 async function moveSelectedToTrash() {
   const ids = exportTaskIdsForFormat();
   if (!ids.length) {
-    alert('没有可移入回收站的勾选任务');
+    toastFail('没有可移入回收站的勾选任务');
     return;
   }
-  const ok = await showConfirm(
-    ids.length === 1
-      ? '确定将所选任务移入回收站吗？可在设置中恢复。'
-      : `确定将所选 ${ids.length} 条任务移入回收站吗？可在设置中恢复。`
-  );
-  if (!ok) return;
-
   const moreBtn = document.getElementById('selectionMoreBtn');
   if (moreBtn) {
     moreBtn.disabled = true;
     moreBtn.textContent = '处理中…';
   }
-  let moved = 0;
-  const failed = [];
+  let moved = [];
   try {
-    for (const id of ids) {
-      try {
-        const res = await API.deleteTask(id);
-        if (res && res.ok === false) failed.push(res.error || id);
-        else {
-          moved += 1;
-          selectedTaskIds.delete(String(id));
-        }
-      } catch (err) {
-        failed.push((err && err.message) || String(id));
-      }
-    }
+    const res = await trashTasksWithUndo(ids);
+    moved = res.moved || [];
+    for (const id of moved) selectedTaskIds.delete(String(id));
   } finally {
     if (moreBtn) {
       moreBtn.disabled = false;
       moreBtn.textContent = '更多';
     }
   }
-
-  if (failed.length && !moved) {
-    alert(failed[0] || '移入回收站失败');
-  } else if (failed.length) {
-    alert(`已移入 ${moved} 条，${failed.length} 条失败`);
-  }
-
   if (!selectedTaskIds.size) clearSelection();
   else syncSelectionUI();
   if (typeof refresh === 'function') await refresh();

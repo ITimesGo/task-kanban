@@ -761,9 +761,9 @@ async function renderPluginList() {
       const ocrCard = box.querySelector('.plugin-card[data-id="ocr"]');
       const installed = !!(ocrPlugin && ocrPlugin.installed);
       if (!installed) {
-        alert('「图内文字搜索」依赖「图片文字识别」。请先下载安装并开启该插件。');
+        toastFail('「图内文字搜索」依赖「图片文字识别」。请先下载安装并开启该插件。');
       } else {
-        alert('「图内文字搜索」依赖「图片文字识别」。请先开启该插件。');
+        toastFail('「图内文字搜索」依赖「图片文字识别」。请先开启该插件。');
       }
       if (ocrCard) {
         ocrCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -781,7 +781,7 @@ async function renderPluginList() {
         const res = await API.setPluginEnabled(id, enabled);
         if (!res || !res.ok) {
           if (res && res.needOcr) {
-            alert((res.error || '请先安装并开启「图片文字识别」') + '。');
+            toastFail((res.error || '请先安装并开启「图片文字识别」') + '。');
             const ocrCard = box.querySelector('.plugin-card[data-id="ocr"]');
             if (ocrCard) {
               ocrCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -789,11 +789,11 @@ async function renderPluginList() {
               setTimeout(() => ocrCard.classList.remove('is-attention'), 1600);
             }
           } else {
-            alert((res && res.error) || '操作失败');
+            toastFail((res && res.error) || '操作失败');
           }
         }
         if (id === 'ocr-search' && enabled && res && res.ok) {
-          if (confirm('是否立即为全部任务图片建立文字索引？（可稍后在插件里点「更新索引」）')) {
+          if (await showConfirm('是否立即为全部任务图片建立文字索引？可稍后在插件里点「更新索引」。', { title: '建立索引', confirmLabel: '建立索引', danger: false })) {
             await renderPluginList();
             const card = document.querySelector('.plugin-card[data-id="ocr-search"]');
             if (card) await buildOcrIndexFromUi(card);
@@ -801,7 +801,7 @@ async function renderPluginList() {
           }
         }
       } catch (err) {
-        alert(err.message || String(err));
+        toastFail(err.message || String(err));
       }
       await renderPluginList();
       if (typeof window.refreshLightboxOcrEntry === 'function') window.refreshLightboxOcrEntry();
@@ -812,13 +812,13 @@ async function renderPluginList() {
   box.querySelectorAll('.plugin-uninstall').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.id;
-      if (!confirm('确定卸载该插件？将删除已下载的语言包并释放磁盘空间。')) return;
+      if (!await showConfirm('确定卸载该插件？将删除已下载的语言包并释放磁盘空间。', { title: '卸载插件', confirmLabel: '卸载' })) return;
       btn.disabled = true;
       try {
         const res = await API.uninstallPlugin(id);
-        if (!res || !res.ok) alert((res && res.error) || '卸载失败');
+        if (!res || !res.ok) toastFail((res && res.error) || '卸载失败');
       } catch (err) {
-        alert(err.message || String(err));
+        toastFail(err.message || String(err));
       }
       await renderPluginList();
       if (typeof window.refreshLightboxOcrEntry === 'function') window.refreshLightboxOcrEntry();
@@ -855,7 +855,7 @@ async function buildOcrIndexFromUi(card) {
     });
   } catch (err) {
     setPluginInstallProgress(card, { percent: 0, text: err.message || String(err) });
-    alert(err.message || String(err));
+    toastFail(err.message || String(err));
   } finally {
     if (typeof off === 'function') off();
     await renderPluginList();
@@ -904,7 +904,7 @@ async function installPluginFromUi(id, card) {
     setPluginInstallProgress(card, { percent: 100, text: '安装完成' });
   } catch (err) {
     setPluginInstallProgress(card, { percent: 0, text: err.message || String(err) });
-    alert(err.message || String(err));
+    toastFail(err.message || String(err));
   } finally {
     if (typeof off === 'function') off();
     await renderPluginList();
@@ -1113,8 +1113,9 @@ function persistViewDefaultsFromForm() {
   }
   const resetBtn = document.getElementById('defResetBtn');
   if (resetBtn) {
-    resetBtn.addEventListener('click', () => {
-      if (!confirm('将常用默认恢复为出厂设置？\n（待执行 / 按创建时间 / 全部时间 / 50条 / 筛选栏收起 / 新建区固定在右侧）')) return;
+    resetBtn.addEventListener('click', async () => {
+      const ok = await showConfirm('将常用默认恢复为出厂设置（待执行、按创建时间、全部时间、50 条、筛选栏收起、新建区固定在右侧）。', { title: '恢复默认', confirmLabel: '恢复', danger: false });
+      if (!ok) return;
       closeAllViewDefaultsDropdowns();
       const factory = typeof resetViewDefaults === 'function' ? resetViewDefaults() : null;
       fillViewDefaultsForm();
@@ -1132,7 +1133,7 @@ $('#settingsOverlay').addEventListener('click', (e) => { if (e.target.id === 'se
 
 document.getElementById('storageOpenBtn').addEventListener('click', async () => {
   const res = await API.openStoragePath();
-  if (res && !res.ok) alert(res.error || '打开失败');
+  if (res && !res.ok) showToast(res.error || '打开失败', { tone: 'fail' });
 });
 
 document.getElementById('storageChangeBtn').addEventListener('click', async () => {
@@ -1140,10 +1141,13 @@ document.getElementById('storageChangeBtn').addEventListener('click', async () =
   btn.disabled = true;
   try {
     const res = await API.changeStoragePath();
-    if (!res || !res.ok) { if (res && res.error !== '已取消') alert(res.error || '更换失败'); return; }
+    if (!res || !res.ok) {
+      if (res && res.error !== '已取消') showToast(res.error || '更换失败', { tone: 'fail' });
+      return;
+    }
     if (res.changed) {
       const hint = res.added ? `，已迁移 ${res.added} 个数据文件` : '';
-      alert(`已切换存储路径${hint}，界面数据已刷新。`);
+      showToast(`已切换存储路径${hint}，界面数据已刷新。`, { tone: 'ok' });
     }
   } finally {
     btn.disabled = false;
@@ -1151,18 +1155,18 @@ document.getElementById('storageChangeBtn').addEventListener('click', async () =
 });
 document.getElementById('storageResetBtn').addEventListener('click', async () => {
   const res = await API.resetStoragePath();
-  if (res && res.changed) alert('已恢复默认存储路径，界面数据已刷新。');
+  if (res && res.changed) showToast('已恢复默认存储路径，界面数据已刷新。', { tone: 'ok' });
   loadStoragePath();
 });
 document.getElementById('cleanupBtn').addEventListener('click', async () => {
   const btn = document.getElementById('cleanupBtn');
-  const ok = await showConfirm('将删除未被任何任务或回收站引用的图片和附件文件，确定继续吗？');
+  const ok = await showConfirm('将删除未被任何任务或回收站引用的图片和附件文件，确定继续吗？', { title: '清理文件', confirmLabel: '清理' });
   if (!ok) return;
   btn.disabled = true;
   try {
     const res = await API.cleanupStorage();
-    if (res && res.deleted > 0) alert(`已清理 ${res.deleted} 个孤立文件。`);
-    else alert('没有需要清理的文件。');
+    if (res && res.deleted > 0) showToast(`已清理 ${res.deleted} 个孤立文件。`, { tone: 'ok' });
+    else showToast('没有需要清理的文件。', { tone: 'info' });
   } finally {
     btn.disabled = false;
   }
@@ -1256,7 +1260,7 @@ async function renderTrashList() {
   box.querySelectorAll('.trash-restore').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const res = await API.restoreTrash(btn.dataset.id);
-      if (!res.ok) { alert(res.error || '恢复失败'); return; }
+      if (!res.ok) { showToast(res.error || '恢复失败', { tone: 'fail' }); return; }
       trashSelected.delete(btn.dataset.id);
       await renderTrashList();
       await refresh();
@@ -1264,7 +1268,7 @@ async function renderTrashList() {
   });
   box.querySelectorAll('.trash-purge').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const ok = await showConfirm('彻底删除后无法恢复，确定继续吗？');
+      const ok = await showConfirm('彻底删除后无法恢复，确定继续吗？', { title: '彻底删除', confirmLabel: '彻底删除' });
       if (!ok) return;
       await API.purgeTrash(btn.dataset.id);
       trashSelected.delete(btn.dataset.id);
@@ -1305,13 +1309,14 @@ document.getElementById('trashBatchRestore')?.addEventListener('click', async ()
   }
   await renderTrashList();
   await refresh();
-  if (fail) alert(`已恢复 ${okCount} 条，失败 ${fail} 条`);
+  if (fail) showToast(`已恢复 ${okCount} 条，失败 ${fail} 条`, { tone: 'fail' });
+  else if (okCount) showToast(`已恢复 ${okCount} 条`, { tone: 'ok' });
 });
 
 document.getElementById('trashBatchPurge')?.addEventListener('click', async () => {
   const ids = getTrashSelectedIds();
   if (!ids.length) return;
-  const ok = await showConfirm(`彻底删除所选 ${ids.length} 条后无法恢复，确定继续吗？`);
+  const ok = await showConfirm(`彻底删除所选 ${ids.length} 条后无法恢复，确定继续吗？`, { title: '彻底删除', confirmLabel: '彻底删除' });
   if (!ok) return;
   for (const id of ids) {
     try {
@@ -1323,11 +1328,11 @@ document.getElementById('trashBatchPurge')?.addEventListener('click', async () =
 });
 
 document.getElementById('trashEmptyBtn').addEventListener('click', async () => {
-  const ok = await showConfirm('确定清空回收站？其中任务将被彻底删除且无法恢复。');
+  const ok = await showConfirm('确定清空回收站？其中任务将被彻底删除且无法恢复。', { title: '清空回收站', confirmLabel: '清空' });
   if (!ok) return;
   const res = await API.emptyTrash();
   trashSelected.clear();
-  alert(res && res.count ? `已清空 ${res.count} 条` : '回收站已为空');
+  showToast(res && res.count ? `已清空 ${res.count} 条` : '回收站已为空', { tone: 'ok' });
   await renderTrashList();
 });
 
@@ -1337,27 +1342,27 @@ document.getElementById('backupExportBtn').addEventListener('click', async () =>
   try {
     const res = await API.exportBackup();
     if (!res || !res.ok) {
-      if (res && res.error !== '已取消') alert(res.error || '导出失败');
+      if (res && res.error !== '已取消') showToast(res.error || '导出失败', { tone: 'fail' });
       return;
     }
-    alert('备份已导出：\n' + res.path);
+    showToast('备份已导出：' + res.path, { tone: 'ok', duration: 3200 });
   } finally {
     btn.disabled = false;
   }
 });
 
 document.getElementById('backupImportBtn').addEventListener('click', async () => {
-  const ok = await showConfirm('导入将合并备份数据（相同 id 跳过）。确定继续吗？');
+  const ok = await showConfirm('导入将合并备份数据（相同 id 跳过）。确定继续吗？', { title: '导入备份', confirmLabel: '导入', danger: false });
   if (!ok) return;
   const btn = document.getElementById('backupImportBtn');
   btn.disabled = true;
   try {
     const res = await API.importBackup();
     if (!res || !res.ok) {
-      if (res && res.error !== '已取消') alert(res.error || '导入失败');
+      if (res && res.error !== '已取消') showToast(res.error || '导入失败', { tone: 'fail' });
       return;
     }
-    alert(`导入完成：任务 +${res.tasksAdded || 0}，标签 +${res.tagsAdded || 0}，文件 +${res.filesCopied || 0}`);
+    showToast(`导入完成：任务 +${res.tasksAdded || 0}，标签 +${res.tagsAdded || 0}，文件 +${res.filesCopied || 0}`, { tone: 'ok' });
     await loadTags();
     await refresh();
     await renderTrashList();

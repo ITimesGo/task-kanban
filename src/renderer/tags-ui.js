@@ -53,18 +53,18 @@ async function confirmDeleteTag(id) {
     const usage = await API.countTagUsage(id);
     const count = usage && usage.ok ? Number(usage.count) || 0 : 0;
     if (count > 0) {
-      alert(`标签「${t.name}」正被 ${count} 个任务使用，请先从任务上移除后再删除。`);
+      toastFail(`标签「${t.name}」正被 ${count} 个任务使用，请先从任务上移除后再删除。`);
       return null;
     }
   } catch (err) {
-    alert('无法检查标签占用：' + (err && err.message ? err.message : err));
+    toastFail('无法检查标签占用：' + (err && err.message ? err.message : err));
     return null;
   }
-  const ok = await showConfirm(`删除标签「${t.name}」？`);
+  const ok = await showConfirm(`删除标签「${t.name}」？`, { title: '删除标签', confirmLabel: '删除' });
   if (!ok) return null;
   const res = await API.deleteTag(id);
   if (!res || !res.ok) {
-    alert((res && res.error) || '删除失败');
+    toastFail((res && res.error) || '删除失败');
     return null;
   }
   return res;
@@ -87,7 +87,7 @@ function renderTagList() {
       const id = btn.dataset.id;
       const input = box.querySelector(`.tag-name[data-id="${id}"]`);
       const res = await API.renameTag(id, input.value);
-      if (!res.ok) { alert(res.error || '保存失败'); return; }
+      if (!res.ok) { toastFail(res.error || '保存失败'); return; }
       tagList = res.tags;
       afterTagMutation();
     });
@@ -127,13 +127,13 @@ async function addTag() {
   const input = $('#tagInput');
   try {
     const res = await API.createTag(input.value);
-    if (!res || !res.ok) { alert((res && res.error) || '新增失败'); restoreTagInputFocus(); return; }
+    if (!res || !res.ok) { toastFail((res && res.error) || '新增失败'); restoreTagInputFocus(); return; }
     input.value = '';
     tagList = res.tags;
     afterTagMutation();
     restoreTagInputFocus();
   } catch (err) {
-    alert('新增失败：' + (err && err.message ? err.message : err));
+    toastFail('新增失败：' + (err && err.message ? err.message : err));
     restoreTagInputFocus();
   }
 }

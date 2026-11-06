@@ -66,7 +66,7 @@
         task = (await API.getAllTasks()).find((t) => String(t.id) === String(id));
       }
       if (!task) {
-        alert('任务不存在');
+        toastFail('任务不存在');
         try { window.close(); } catch (_) { /* ignore */ }
         return;
       }
@@ -93,7 +93,7 @@
       }
     } catch (err) {
       console.error(err);
-      alert((err && err.message) || '打开编辑窗口失败');
+      toastFail((err && err.message) || '打开编辑窗口失败');
     }
   })();
 })();

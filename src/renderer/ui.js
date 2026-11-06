@@ -334,6 +334,7 @@ const ui = (() => {
   let cardsClickBound = false;
   /** @type {{ taskById: Map<string, any>, onQuickToggle?: Function, onOpen?: Function, onToggleSelect?: Function }|null} */
   let cardsClickHandlers = null;
+
   function ensureCardsClickDelegation() {
     if (cardsClickBound || !cardsEl) return;
     cardsClickBound = true;
@@ -364,6 +365,22 @@ const ui = (() => {
         } else if (typeof API.openEditWindow === 'function') {
           API.openEditWindow(t.id);
         }
+        return;
+      }
+      const att = e.target.closest && e.target.closest('.card-att');
+      if (att && cardsEl.contains(att)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const rel = att.getAttribute('data-rel');
+        if (!rel) return;
+        if (typeof showToast === 'function') showToast('正在打开…', { tone: 'info' });
+        API.openAttachment(rel).then((res) => {
+          if (res && res.ok) {
+            if (typeof showToast === 'function') showToast('已用默认程序打开', { tone: 'ok' });
+          } else toastFail((res && res.error) || '打开失败');
+        }).catch((err) => {
+          toastFail((err && err.message) || '打开失败');
+        });
         return;
       }
       const toggle = e.target.closest && e.target.closest('[data-action="toggle"]');
@@ -419,7 +436,7 @@ const ui = (() => {
     const atts = (t.attachments || []).map((a) => {
       const rel = typeof a === 'string' ? a : a.rel;
       const name = rel ? rel.split('/').pop() : (typeof a === 'object' && a.name) || '';
-      return name ? `<span class="card-att" title="${esc(name)}">${ATT_ICON}<span>${esc(name)}</span></span>` : '';
+      return name ? `<span class="card-att" data-rel="${esc(rel || '')}" role="button" tabindex="0" title="${esc(name)}（点击用默认程序打开）">${ATT_ICON}<span>${esc(name)}</span></span>` : '';
     }).filter(Boolean).join('');
     const attRow = atts ? `<div class="att-chips">${atts}</div>` : '';
     const matchRow = matchHintHtml(matchById && t.id != null ? matchById[t.id] : null);
@@ -760,7 +777,7 @@ const ui = (() => {
     }).filter(Boolean).map((rel) => {
       const name = rel.split('/').pop();
       return `<div class="att-row" data-rel="${esc(rel)}" role="button" tabindex="0"
-           title="${esc(name)}（点击用外部软件打开）">
+           title="${esc(name)}（点击用默认程序打开）" aria-label="打开附件 ${esc(name)}">
          <span class="att-badge">${ATT_ICON}</span>
          <span class="att-name">${esc(name)}</span>
          <svg class="att-arrow" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7M7 7h10v10"/></svg>
@@ -800,9 +817,37 @@ const ui = (() => {
       }
     });
     detailBody.querySelectorAll('.att-row').forEach((row) => {
-      const open = () => API.openAttachment(row.dataset.rel);
-      row.addEventListener('click', open);
-      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      const toast = (text, tone) => {
+        if (typeof showToast === 'function') showToast(text, { tone });
+      };
+      const open = async () => {
+        if (row.classList.contains('is-opening')) return;
+        const rel = row.dataset.rel;
+        if (!rel) {
+          toast('附件路径无效', 'fail');
+          return;
+        }
+        row.classList.add('is-opening');
+        row.setAttribute('aria-busy', 'true');
+        toast('正在打开…', 'info');
+        let res = null;
+        try {
+          res = await API.openAttachment(rel);
+        } catch (_) {
+          res = { ok: false, error: '打开失败' };
+        }
+        row.classList.remove('is-opening');
+        row.removeAttribute('aria-busy');
+        if (res && res.ok) toast('已用默认程序打开', 'ok');
+        else toast((res && res.error) || '打开失败', 'fail');
+      };
+      row.addEventListener('click', () => { open(); });
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open();
+        }
+      });
     });
     detailBody.oncontextmenu = (e) => {
       const fig = e.target && e.target.closest && e.target.closest('.doc-view figure.doc-media, figure.doc-media');

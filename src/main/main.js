@@ -1,4 +1,12 @@
 const { app, BrowserWindow, ipcMain, dialog, clipboard, protocol, net, globalShortcut, shell } = require('electron');
+
+// Windows：窗口被其它窗口挡住后再切回来，Chromium 的遮挡计算会让渲染停住，表现为点不动、滚不动。
+// 必须在 app ready 之前设置。
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+  // 窗口被挡住时不要挂起渲染进程，避免切回时一次性解冻卡死
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
+}
 const path = require('path');
 
 // 必须与 electron-builder.yml 的 appId 一致，且在创建窗口之前设置。
@@ -265,6 +273,8 @@ function createWindow() {
       preload: path.join(__dirname, '../preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // 最小化/被挡住时不要冻结定时器，避免切回前台时积压的任务一次性冲上来
+      backgroundThrottling: false,
     },
   });
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
@@ -745,9 +755,26 @@ function setupStoreHandlers() {
     if (res.canceled) return [];
     return res.filePaths;
   });
-  ipcHandle('file:open', (_e, rel) => {
-    const abs = path.join(APP_DATA, rel);
-    if (fs.existsSync(abs)) shell.openPath(abs);
+  ipcHandle('file:open', async (_e, rel) => {
+    const raw = String(rel || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!raw || raw.split('/').includes('..')) {
+      return { ok: false, error: '附件路径无效' };
+    }
+    const root = path.resolve(APP_DATA);
+    const abs = path.resolve(root, raw);
+    const fromRoot = path.relative(root, abs);
+    if (!fromRoot || fromRoot.startsWith('..') || path.isAbsolute(fromRoot)) {
+      return { ok: false, error: '附件路径无效' };
+    }
+    if (!fs.existsSync(abs)) return { ok: false, error: '文件不存在或已被移动' };
+    let err = '';
+    try {
+      err = await shell.openPath(abs);
+    } catch (e) {
+      err = (e && e.message) || '打开失败';
+    }
+    if (err) return { ok: false, error: '系统没有可用的程序打开这个文件' };
+    return { ok: true };
   });
   ipcHandle('media:allowSrcPath', (_e, absPath) => {
     return { ok: mediaActions.allowPendingSrcPath(absPath) };
