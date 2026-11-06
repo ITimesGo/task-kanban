@@ -414,7 +414,19 @@ document.querySelectorAll('.settings-nav-item').forEach((item) => {
 
 let pendingUpdateUrl = '';
 let pendingUpdateLatest = '';
+/** 下载或安装进行中；此期间不再改按钮可用状态，避免检查结果把按钮重新放开 */
+let updateBusy = false;
 const UPDATE_BADGE_KEY = 'kanban-update-available';
+
+function setUpdateActionsLocked(locked) {
+  for (const id of ['checkUpdateBtn', 'downloadUpdateBtn']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.disabled = !!locked;
+    el.classList.toggle('is-disabled', !!locked);
+    el.setAttribute('aria-disabled', locked ? 'true' : 'false');
+  }
+}
 
 function setUpdateBadge(on, latest) {
   const dots = [
@@ -491,6 +503,7 @@ function setCancelUpdateVisible(on) {
 }
 
 function applyUpdateCheckResult(res, { silent = false } = {}) {
+  if (updateBusy) return false;
   const hint = document.getElementById('aboutUpdateHint');
   const dlBtn = document.getElementById('downloadUpdateBtn');
   pendingUpdateUrl = '';
@@ -532,8 +545,10 @@ function applyUpdateCheckResult(res, { silent = false } = {}) {
 
 /** 启动/后台静默检查；有新版则点亮小红点 */
 async function silentCheckUpdate() {
+  if (updateBusy) return;
   try {
     const res = await API.checkForUpdate();
+    if (updateBusy) return;
     applyUpdateCheckResult(res, { silent: true });
   } catch (_) { /* ignore */ }
 }
@@ -543,6 +558,13 @@ async function fillAboutPanel() {
   const verEl = document.getElementById('aboutVersionText');
   const hint = document.getElementById('aboutUpdateHint');
   const dlBtn = document.getElementById('downloadUpdateBtn');
+  try {
+    const v = await API.getAppVersion();
+    if (verEl) verEl.textContent = `版本 ${v || '—'}`;
+  } catch (_) {
+    if (verEl) verEl.textContent = '版本 —';
+  }
+  if (updateBusy) return;
   pendingUpdateUrl = '';
   pendingUpdateLatest = '';
   clearUpdateNotes();
@@ -551,16 +573,14 @@ async function fillAboutPanel() {
     dlBtn.classList.add('hidden');
     dlBtn.hidden = true;
     dlBtn.disabled = false;
-  }
-  try {
-    const v = await API.getAppVersion();
-    if (verEl) verEl.textContent = `版本 ${v || '—'}`;
-  } catch (_) {
-    if (verEl) verEl.textContent = '版本 —';
+    dlBtn.classList.remove('is-disabled');
+    dlBtn.setAttribute('aria-disabled', 'false');
   }
   if (hint) hint.textContent = '正在检查更新…';
+  setUpdateActionsLocked(true);
   try {
     const res = await API.checkForUpdate();
+    if (updateBusy) return;
     applyUpdateCheckResult(res, { silent: false });
     if (res && res.ok && res.status === 'latest' && hint) {
       hint.textContent = `已是最新版本（${res.current || ''}）。也可稍后再点「检查更新」。`;
@@ -570,33 +590,36 @@ async function fillAboutPanel() {
   } catch (err) {
     clearUpdateNotes();
     if (hint) hint.textContent = ((err && err.message) || '自动检查失败') + '。可稍后点「检查更新」重试。';
+  } finally {
+    if (!updateBusy) setUpdateActionsLocked(false);
   }
 }
 
 document.getElementById('checkUpdateBtn')?.addEventListener('click', async () => {
   const btn = document.getElementById('checkUpdateBtn');
   const hint = document.getElementById('aboutUpdateHint');
-  if (btn) btn.disabled = true;
+  if (updateBusy || (btn && (btn.disabled || btn.classList.contains('is-disabled')))) return;
+  setUpdateActionsLocked(true);
   clearUpdateNotes();
   if (hint) hint.textContent = '正在检查…';
   try {
     const res = await API.checkForUpdate();
+    if (updateBusy) return;
     applyUpdateCheckResult(res, { silent: false });
   } catch (err) {
     clearUpdateNotes();
     if (hint) hint.textContent = (err && err.message) || '检查失败';
   } finally {
-    if (btn) btn.disabled = false;
+    if (!updateBusy) setUpdateActionsLocked(false);
   }
 });
 
 document.getElementById('downloadUpdateBtn')?.addEventListener('click', async () => {
   const btn = document.getElementById('downloadUpdateBtn');
-  const checkBtn = document.getElementById('checkUpdateBtn');
-  const cancelBtn = document.getElementById('cancelUpdateBtn');
   const hint = document.getElementById('aboutUpdateHint');
-  if (btn) btn.disabled = true;
-  if (checkBtn) checkBtn.disabled = true;
+  if (updateBusy || (btn && (btn.disabled || btn.classList.contains('is-disabled')))) return;
+  updateBusy = true;
+  setUpdateActionsLocked(true);
   setCancelUpdateVisible(true);
   if (hint) hint.textContent = '正在下载更新…（可点「取消更新」中止）';
   const offProgress = API.onUpdateDownloadProgress?.((p) => {
@@ -613,8 +636,10 @@ document.getElementById('downloadUpdateBtn')?.addEventListener('click', async ()
       if (hint) hint.textContent = res.message || '下载完成，正在安装并重启…';
       setUpdateBadge(false);
       setCancelUpdateVisible(false);
+      setUpdateActionsLocked(true);
       return;
     }
+    updateBusy = false;
     if (res && res.cancelled) {
       if (hint) {
         hint.textContent = pendingUpdateLatest
@@ -624,14 +649,13 @@ document.getElementById('downloadUpdateBtn')?.addEventListener('click', async ()
     } else if (hint) {
       hint.textContent = (res && (res.error || res.message)) || '更新失败';
     }
-    if (btn) btn.disabled = false;
-    if (checkBtn) checkBtn.disabled = false;
+    setUpdateActionsLocked(false);
   } catch (err) {
+    updateBusy = false;
     if (hint) hint.textContent = (err && err.message) || '更新失败';
-    if (btn) btn.disabled = false;
-    if (checkBtn) checkBtn.disabled = false;
+    setUpdateActionsLocked(false);
   } finally {
-    setCancelUpdateVisible(false);
+    if (!updateBusy) setCancelUpdateVisible(false);
     try { offProgress && offProgress(); } catch (_) { /* ignore */ }
   }
 });
@@ -678,6 +702,37 @@ function pluginProgressPercent(p) {
   if (p.phase === 'download' && p.status === 'inflate') return 92;
   if (p.phase === 'install' && p.status === 'start') return 2;
   return null;
+}
+
+const pluginBusy = new Set();
+const pluginProgressSnap = new Map();
+
+function pluginCardEl(id) {
+  if (!id) return null;
+  return document.querySelector(`.plugin-card[data-id="${id}"]`);
+}
+
+function setPluginListLocked(locked) {
+  const box = document.getElementById('pluginList');
+  if (!box) return;
+  box.querySelectorAll('.plugin-card-actions button').forEach((b) => {
+    b.disabled = !!locked;
+    b.classList.toggle('is-disabled', !!locked);
+    b.setAttribute('aria-disabled', locked ? 'true' : 'false');
+  });
+}
+
+function restorePluginProgress() {
+  for (const [id, snap] of pluginProgressSnap) {
+    const card = pluginCardEl(id);
+    if (card && snap) setPluginInstallProgress(card, snap);
+  }
+}
+
+function refreshPluginDependents() {
+  if (typeof window.refreshLightboxOcrEntry === 'function') window.refreshLightboxOcrEntry();
+  if (typeof window.refreshClipboardQuick === 'function') window.refreshClipboardQuick();
+  if (typeof window.refreshOcrSearchPlugin === 'function') window.refreshOcrSearchPlugin();
 }
 
 async function renderPluginList() {
@@ -753,8 +808,13 @@ async function renderPluginList() {
     </div>`;
   }).join('') || '<p class="setting-hint">暂无可用插件</p>';
 
+  if (pluginBusy.size) {
+    setPluginListLocked(true);
+    restorePluginProgress();
+  }
+
   box.querySelectorAll('.plugin-install').forEach((btn) => {
-    btn.addEventListener('click', () => installPluginFromUi(btn.dataset.id, btn.closest('.plugin-card')));
+    btn.addEventListener('click', () => installPluginFromUi(btn.dataset.id));
   });
   box.querySelectorAll('.plugin-need-ocr').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -773,74 +833,92 @@ async function renderPluginList() {
     });
   });
   box.querySelectorAll('.plugin-toggle').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = btn.dataset.id;
-      const enabled = btn.dataset.enabled === '1';
-      btn.disabled = true;
-      try {
-        const res = await API.setPluginEnabled(id, enabled);
-        if (!res || !res.ok) {
-          if (res && res.needOcr) {
-            toastFail((res.error || '请先安装并开启「图片文字识别」') + '。');
-            const ocrCard = box.querySelector('.plugin-card[data-id="ocr"]');
-            if (ocrCard) {
-              ocrCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-              ocrCard.classList.add('is-attention');
-              setTimeout(() => ocrCard.classList.remove('is-attention'), 1600);
-            }
-          } else {
-            toastFail((res && res.error) || '操作失败');
-          }
-        }
-        if (id === 'ocr-search' && enabled && res && res.ok) {
-          if (await showConfirm('是否立即为全部任务图片建立文字索引？可稍后在插件里点「更新索引」。', { title: '建立索引', confirmLabel: '建立索引', danger: false })) {
-            await renderPluginList();
-            const card = document.querySelector('.plugin-card[data-id="ocr-search"]');
-            if (card) await buildOcrIndexFromUi(card);
-            return;
-          }
-        }
-      } catch (err) {
-        toastFail(err.message || String(err));
-      }
-      await renderPluginList();
-      if (typeof window.refreshLightboxOcrEntry === 'function') window.refreshLightboxOcrEntry();
-      if (typeof window.refreshClipboardQuick === 'function') window.refreshClipboardQuick();
-      if (typeof window.refreshOcrSearchPlugin === 'function') window.refreshOcrSearchPlugin();
-    });
+    btn.addEventListener('click', () => togglePluginFromUi(btn.dataset.id, btn.dataset.enabled === '1'));
   });
   box.querySelectorAll('.plugin-uninstall').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = btn.dataset.id;
-      if (!await showConfirm('确定卸载该插件？将删除已下载的语言包并释放磁盘空间。', { title: '卸载插件', confirmLabel: '卸载' })) return;
-      btn.disabled = true;
-      try {
-        const res = await API.uninstallPlugin(id);
-        if (!res || !res.ok) toastFail((res && res.error) || '卸载失败');
-      } catch (err) {
-        toastFail(err.message || String(err));
-      }
-      await renderPluginList();
-      if (typeof window.refreshLightboxOcrEntry === 'function') window.refreshLightboxOcrEntry();
-      if (typeof window.refreshClipboardQuick === 'function') window.refreshClipboardQuick();
-      if (typeof window.refreshOcrSearchPlugin === 'function') window.refreshOcrSearchPlugin();
-    });
+    btn.addEventListener('click', () => uninstallPluginFromUi(btn.dataset.id));
   });
   box.querySelectorAll('.plugin-index-build').forEach((btn) => {
     btn.addEventListener('click', () => buildOcrIndexFromUi(btn.closest('.plugin-card')));
   });
 }
 
-async function buildOcrIndexFromUi(card) {
+async function togglePluginFromUi(id, enabled) {
+  if (!id || pluginBusy.size) return;
+  pluginBusy.add(id);
+  setPluginListLocked(true);
+  let handedOff = false;
+  try {
+    const res = await API.setPluginEnabled(id, enabled);
+    if (!res || !res.ok) {
+      if (res && res.needOcr) {
+        toastFail((res.error || '请先安装并开启「图片文字识别」') + '。');
+        const ocrCard = pluginCardEl('ocr');
+        if (ocrCard) {
+          ocrCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          ocrCard.classList.add('is-attention');
+          setTimeout(() => ocrCard.classList.remove('is-attention'), 1600);
+        }
+      } else {
+        toastFail((res && res.error) || '操作失败');
+      }
+    }
+    if (id === 'ocr-search' && enabled && res && res.ok) {
+      if (await showConfirm('是否立即为全部任务图片建立文字索引？可稍后在插件里点「更新索引」。', { title: '建立索引', confirmLabel: '建立索引', danger: false })) {
+        await renderPluginList();
+        const card = pluginCardEl('ocr-search');
+        if (card) {
+          handedOff = true;
+          await buildOcrIndexFromUi(card, { alreadyBusy: true });
+        }
+      }
+    }
+  } catch (err) {
+    toastFail(err.message || String(err));
+  } finally {
+    if (handedOff) return;
+    pluginBusy.delete(id);
+    pluginProgressSnap.delete(id);
+    await renderPluginList();
+    refreshPluginDependents();
+  }
+}
+
+async function uninstallPluginFromUi(id) {
+  if (!id || pluginBusy.size) return;
+  pluginBusy.add(id);
+  setPluginListLocked(true);
+  try {
+    if (!await showConfirm('确定卸载该插件？将删除已下载的语言包并释放磁盘空间。', { title: '卸载插件', confirmLabel: '卸载' })) return;
+    const res = await API.uninstallPlugin(id);
+    if (!res || !res.ok) toastFail((res && res.error) || '卸载失败');
+  } catch (err) {
+    toastFail(err.message || String(err));
+  } finally {
+    pluginBusy.delete(id);
+    pluginProgressSnap.delete(id);
+    await renderPluginList();
+    refreshPluginDependents();
+  }
+}
+
+async function buildOcrIndexFromUi(card, { alreadyBusy = false } = {}) {
+  const id = (card && card.dataset && card.dataset.id) || 'ocr-search';
   if (!card) return;
-  const actions = card.querySelector('.plugin-card-actions');
-  const btns = actions ? [...actions.querySelectorAll('button')] : [];
-  btns.forEach((b) => { b.disabled = true; });
-  setPluginInstallProgress(card, { percent: 1, text: '开始建立索引…' });
+  if (!alreadyBusy) {
+    if (pluginBusy.size) return;
+    pluginBusy.add(id);
+  }
+  setPluginListLocked(true);
+  const showProgress = (patch) => {
+    const live = pluginCardEl(id) || card;
+    setPluginInstallProgress(live, patch);
+  };
+  showProgress({ percent: 1, text: '开始建立索引…' });
   const off = API.onOcrIndexProgress((p) => {
     if (!p) return;
     const pct = typeof p.percent === 'number' ? p.percent : null;
-    setPluginInstallProgress(card, {
+    showProgress({
       percent: pct ?? undefined,
       text: p.message || '索引中…',
       indeterminate: pct == null,
@@ -849,15 +927,17 @@ async function buildOcrIndexFromUi(card) {
   try {
     const res = await API.ocrIndexBuild({ force: false });
     if (!res || !res.ok) throw new Error((res && res.error) || '建立索引失败');
-    setPluginInstallProgress(card, {
+    showProgress({
       percent: 100,
       text: res.message || (res.total === 0 ? '索引已是最新' : `完成：成功 ${res.okCount || 0}`),
     });
   } catch (err) {
-    setPluginInstallProgress(card, { percent: 0, text: err.message || String(err) });
+    showProgress({ percent: 0, text: err.message || String(err) });
     toastFail(err.message || String(err));
   } finally {
     if (typeof off === 'function') off();
+    pluginBusy.delete(id);
+    pluginProgressSnap.delete(id);
     await renderPluginList();
     if (typeof window.refreshOcrSearchPlugin === 'function') window.refreshOcrSearchPlugin();
   }
@@ -882,17 +962,21 @@ function setPluginInstallProgress(card, { percent, text, indeterminate = false }
   if (pctEl) pctEl.textContent = pct != null ? `${pct}%` : '';
 }
 
-async function installPluginFromUi(id, card) {
-  if (!id || !card) return;
-  const actions = card.querySelector('.plugin-card-actions');
-  const btns = actions ? [...actions.querySelectorAll('button')] : [];
-  btns.forEach((b) => { b.disabled = true; });
-  setPluginInstallProgress(card, { percent: 1, text: '开始安装…' });
+async function installPluginFromUi(id) {
+  if (!id || pluginBusy.size) return;
+  pluginBusy.add(id);
+  setPluginListLocked(true);
+  const showProgress = (patch) => {
+    const live = pluginCardEl(id);
+    if (live) setPluginInstallProgress(live, patch);
+    else pluginProgressSnap.set(id, patch);
+  };
+  showProgress({ percent: 1, text: '开始安装…' });
   const off = API.onPluginProgress((p) => {
     if (!p || p.id !== id) return;
     const msg = pluginProgressMessage(p);
     const percent = pluginProgressPercent(p);
-    setPluginInstallProgress(card, {
+    showProgress({
       percent: percent ?? undefined,
       text: msg || '安装中…',
       indeterminate: percent == null,
@@ -901,16 +985,16 @@ async function installPluginFromUi(id, card) {
   try {
     const res = await API.installPlugin(id);
     if (!res || !res.ok) throw new Error((res && res.error) || '安装失败');
-    setPluginInstallProgress(card, { percent: 100, text: '安装完成' });
+    showProgress({ percent: 100, text: '安装完成' });
   } catch (err) {
-    setPluginInstallProgress(card, { percent: 0, text: err.message || String(err) });
+    showProgress({ percent: 0, text: err.message || String(err) });
     toastFail(err.message || String(err));
   } finally {
     if (typeof off === 'function') off();
+    pluginBusy.delete(id);
+    pluginProgressSnap.delete(id);
     await renderPluginList();
-    if (typeof window.refreshLightboxOcrEntry === 'function') window.refreshLightboxOcrEntry();
-    if (typeof window.refreshClipboardQuick === 'function') window.refreshClipboardQuick();
-    if (typeof window.refreshOcrSearchPlugin === 'function') window.refreshOcrSearchPlugin();
+    refreshPluginDependents();
   }
 }
 
@@ -1173,6 +1257,39 @@ document.getElementById('cleanupBtn').addEventListener('click', async () => {
 });
 
 let trashSelected = new Set();
+let trashBusy = false;
+
+function setTrashActionsLocked(locked) {
+  const box = document.getElementById('trashList');
+  if (box) {
+    box.querySelectorAll('.trash-actions button').forEach((b) => {
+      b.disabled = !!locked;
+      b.classList.toggle('is-disabled', !!locked);
+    });
+    box.querySelectorAll('.trash-item-check').forEach((el) => {
+      el.disabled = !!locked;
+    });
+  }
+  const emptyBtn = document.getElementById('trashEmptyBtn');
+  const all = document.getElementById('trashSelectAll');
+  if (emptyBtn) {
+    emptyBtn.disabled = !!locked;
+    emptyBtn.classList.toggle('is-disabled', !!locked);
+  }
+  if (all) all.disabled = !!locked;
+  const restoreBtn = document.getElementById('trashBatchRestore');
+  const purgeBtn = document.getElementById('trashBatchPurge');
+  if (locked) {
+    if (restoreBtn) {
+      restoreBtn.disabled = true;
+      restoreBtn.classList.add('is-disabled');
+    }
+    if (purgeBtn) {
+      purgeBtn.disabled = true;
+      purgeBtn.classList.add('is-disabled');
+    }
+  }
+}
 
 function syncTrashToolbar(total) {
   const toolbar = document.getElementById('trashToolbar');
@@ -1186,8 +1303,14 @@ function syncTrashToolbar(total) {
   toolbar.hidden = !show;
   toolbar.classList.toggle('hidden', !show);
   if (countEl) countEl.textContent = `已选 ${n} 项`;
-  if (restoreBtn) restoreBtn.disabled = n === 0;
-  if (purgeBtn) purgeBtn.disabled = n === 0;
+  if (restoreBtn) {
+    restoreBtn.disabled = trashBusy || n === 0;
+    restoreBtn.classList.toggle('is-disabled', trashBusy);
+  }
+  if (purgeBtn) {
+    purgeBtn.disabled = trashBusy || n === 0;
+    purgeBtn.classList.toggle('is-disabled', trashBusy);
+  }
   if (all) {
     all.checked = total > 0 && n === total;
     all.indeterminate = n > 0 && n < total;
@@ -1207,6 +1330,7 @@ async function renderTrashList() {
   if (!list.length) {
     box.innerHTML = '<p class="hint">回收站为空</p>';
     syncTrashToolbar(0);
+    if (trashBusy) setTrashActionsLocked(true);
     return;
   }
   box.innerHTML = list.map((t) => {
@@ -1245,10 +1369,12 @@ async function renderTrashList() {
     </div>`;
   }).join('');
   syncTrashToolbar(list.length);
+  if (trashBusy) setTrashActionsLocked(true);
 
   box.querySelectorAll('.trash-item-check').forEach((input) => {
     input.addEventListener('click', (e) => e.stopPropagation());
     input.addEventListener('change', () => {
+      if (trashBusy) return;
       const id = input.dataset.id;
       if (input.checked) trashSelected.add(id);
       else trashSelected.delete(id);
@@ -1258,26 +1384,37 @@ async function renderTrashList() {
     });
   });
   box.querySelectorAll('.trash-restore').forEach((btn) => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => runTrashJob(async () => {
       const res = await API.restoreTrash(btn.dataset.id);
       if (!res.ok) { showToast(res.error || '恢复失败', { tone: 'fail' }); return; }
       trashSelected.delete(btn.dataset.id);
-      await renderTrashList();
       await refresh();
-    });
+    }));
   });
   box.querySelectorAll('.trash-purge').forEach((btn) => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => runTrashJob(async () => {
       const ok = await showConfirm('彻底删除后无法恢复，确定继续吗？', { title: '彻底删除', confirmLabel: '彻底删除' });
       if (!ok) return;
       await API.purgeTrash(btn.dataset.id);
       trashSelected.delete(btn.dataset.id);
-      await renderTrashList();
-    });
+    }));
   });
 }
 
+async function runTrashJob(work) {
+  if (trashBusy) return;
+  trashBusy = true;
+  setTrashActionsLocked(true);
+  try {
+    await work();
+  } finally {
+    trashBusy = false;
+    await renderTrashList();
+  }
+}
+
 document.getElementById('trashSelectAll')?.addEventListener('change', async (e) => {
+  if (trashBusy) return;
   const box = $('#trashList');
   const checked = !!e.target.checked;
   if (!box) return;
@@ -1293,7 +1430,7 @@ document.getElementById('trashSelectAll')?.addEventListener('change', async (e) 
   syncTrashToolbar(inputs.length);
 });
 
-document.getElementById('trashBatchRestore')?.addEventListener('click', async () => {
+document.getElementById('trashBatchRestore')?.addEventListener('click', () => runTrashJob(async () => {
   const ids = getTrashSelectedIds();
   if (!ids.length) return;
   let okCount = 0;
@@ -1307,13 +1444,12 @@ document.getElementById('trashBatchRestore')?.addEventListener('click', async ()
       } else fail += 1;
     } catch (_) { fail += 1; }
   }
-  await renderTrashList();
   await refresh();
   if (fail) showToast(`已恢复 ${okCount} 条，失败 ${fail} 条`, { tone: 'fail' });
   else if (okCount) showToast(`已恢复 ${okCount} 条`, { tone: 'ok' });
-});
+}));
 
-document.getElementById('trashBatchPurge')?.addEventListener('click', async () => {
+document.getElementById('trashBatchPurge')?.addEventListener('click', () => runTrashJob(async () => {
   const ids = getTrashSelectedIds();
   if (!ids.length) return;
   const ok = await showConfirm(`彻底删除所选 ${ids.length} 条后无法恢复，确定继续吗？`, { title: '彻底删除', confirmLabel: '彻底删除' });
@@ -1324,17 +1460,15 @@ document.getElementById('trashBatchPurge')?.addEventListener('click', async () =
       trashSelected.delete(id);
     } catch (_) { /* ignore */ }
   }
-  await renderTrashList();
-});
+}));
 
-document.getElementById('trashEmptyBtn').addEventListener('click', async () => {
+document.getElementById('trashEmptyBtn').addEventListener('click', () => runTrashJob(async () => {
   const ok = await showConfirm('确定清空回收站？其中任务将被彻底删除且无法恢复。', { title: '清空回收站', confirmLabel: '清空' });
   if (!ok) return;
   const res = await API.emptyTrash();
   trashSelected.clear();
   showToast(res && res.count ? `已清空 ${res.count} 条` : '回收站已为空', { tone: 'ok' });
-  await renderTrashList();
-});
+}));
 
 document.getElementById('backupExportBtn').addEventListener('click', async () => {
   const btn = document.getElementById('backupExportBtn');

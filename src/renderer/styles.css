@@ -261,6 +261,14 @@
   background: var(--primary-hover) !important;
   color: #fff !important;
 }
+[data-skin="mario"] .setting-actions button:disabled,
+[data-skin="mario"] .setting-actions button.is-disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
 
 [data-skin="mario"] .status-seg-btn {
   border: var(--pixel) solid transparent !important;
@@ -1539,6 +1547,12 @@
   box-shadow: none;
   text-shadow: none;
 }
+[data-skin="apple"] .setting-actions button:disabled,
+[data-skin="apple"] .setting-actions button.is-disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+}
 [data-skin="apple"] #createPanel .create-collapse-btn {
   background: rgba(118, 118, 128, 0.12) !important;
   color: #1d1d1f !important;
@@ -1984,10 +1998,13 @@
   border: none !important;
   filter: brightness(1.06) !important;
 }
-[data-skin="apple"] .plugin-card-actions button:disabled {
+[data-skin="apple"] .plugin-card-actions button:disabled,
+[data-skin="apple"] .plugin-card-actions button.is-disabled {
   opacity: 0.45;
   color: #8e8e93 !important;
   border-color: rgba(60, 60, 67, 0.14) !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
 }
 [data-skin="mario"] .plugin-list {
   background: rgba(255, 224, 160, 0.55);
@@ -3276,9 +3293,11 @@ body {
   color: var(--on-primary);
   filter: brightness(1.05);
 }
-.plugin-card-actions button:disabled {
+.plugin-card-actions button:disabled,
+.plugin-card-actions button.is-disabled {
   opacity: 0.55;
-  cursor: default;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 .setting-row { display: flex; flex-direction: column; gap: 8px; }
 .setting-label { font-weight: 600; font-size: 14px; }
@@ -3318,6 +3337,14 @@ body {
   background: var(--primary-hover, var(--primary));
   color: var(--on-primary);
   border-color: var(--primary-hover, var(--primary));
+}
+.setting-actions button:disabled,
+.setting-actions button.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed !important;
+  pointer-events: none;
+  box-shadow: none !important;
+  transform: none !important;
 }
 .setting-actions #storageResetBtn,
 .setting-actions #defResetBtn { color: var(--text-muted); }
@@ -3425,9 +3452,11 @@ body {
   border-color: var(--primary);
   color: var(--primary);
 }
-.trash-batch-actions button:disabled {
+.trash-batch-actions button:disabled,
+.trash-batch-actions button.is-disabled {
   opacity: 0.45;
   cursor: not-allowed;
+  pointer-events: none;
 }
 .trash-batch-actions .danger { color: #e5484d; }
 .trash-batch-actions .danger:hover:not(:disabled) {
@@ -3481,9 +3510,17 @@ body {
   background: var(--surface);
   color: var(--text);
 }
-.trash-actions button:hover { border-color: var(--primary); color: var(--primary); }
+.trash-actions button:hover:not(:disabled):not(.is-disabled) { border-color: var(--primary); color: var(--primary); }
 .trash-actions .danger { color: #e5484d; }
-.trash-actions .danger:hover { border-color: #e5484d; color: #e5484d; }
+.trash-actions .danger:hover:not(:disabled):not(.is-disabled) { border-color: #e5484d; color: #e5484d; }
+.trash-actions button:disabled,
+.trash-actions button.is-disabled,
+#trashEmptyBtn:disabled,
+#trashEmptyBtn.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
 
 /* 主题选择 */
 .theme-options { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -5481,11 +5518,13 @@ textarea:focus {
 #createPanel #createBtn:active,
 #detailActions .primary:active { background: var(--primary-active); color: var(--on-primary); }
 #createActions .primary:disabled,
-#createPanel #createBtn:disabled {
+#createPanel #createBtn:disabled,
+#createPanel #createBtn.is-disabled {
   background: #a0cfff;
   border-color: #a0cfff;
   color: #f0faff;
   cursor: not-allowed;
+  pointer-events: none;
 }
 #saveBtn.is-saving,
 #saveBtn:disabled {

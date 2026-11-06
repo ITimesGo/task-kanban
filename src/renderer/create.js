@@ -225,11 +225,18 @@ function syncCreateTagFilterOptions() {
   ui.renderManageableTagFilter(tagList, newTags, cbs, els);
 }
 
+let createBusy = false;
+
 function updateCreateBtnState() {
   const empty = createEditor
     ? createEditor.isEmpty(newAttachments)
     : !(newAttachments.length);
-  $('#createBtn').disabled = empty;
+  const btn = $('#createBtn');
+  if (!btn) return;
+  const locked = createBusy || empty;
+  btn.disabled = locked;
+  btn.classList.toggle('is-disabled', locked);
+  btn.setAttribute('aria-disabled', locked ? 'true' : 'false');
 }
 
 function renderNewTagSelect() {
@@ -297,6 +304,11 @@ window.onAddImage = async () => {
 };
 
 async function createTask() {
+  if (createBusy) return;
+  const btn = $('#createBtn');
+  if (btn && btn.disabled) return;
+  createBusy = true;
+  updateCreateBtnState();
   const atts = newAttachments.map(function(a){return {srcPath:a.path, name:a.name};});
   const onProgress = (d) => updateUploadProgress('createProgress', d);
   const sub = API.onAttachmentProgress(onProgress);
@@ -334,7 +346,9 @@ async function createTask() {
     }
     if (typeof showToast === 'function') showToast(note, { tone: 'ok' });
   } finally {
+    createBusy = false;
     hideUploadProgress('createProgress');
+    updateCreateBtnState();
   }
   if (typeof sub === 'function') sub();
 }
